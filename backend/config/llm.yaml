@@ -1,0 +1,23 @@
+# CLAUDE.md §5/§5a: two-tier fallback, in order — Hugging Face Serverless
+# Inference API (primary), then Groq (fallback). No third/offline tier.
+# Model availability on free-tier serverless endpoints shifts over time;
+# these are working defaults as of this project's build date, not
+# permanent — update here, not by hardcoding a model name into an agent.
+
+huggingface:
+  model: "Qwen/Qwen2.5-72B-Instruct"
+  timeout_seconds: 20
+
+groq:
+  model: "llama-3.3-70b-versatile"
+  timeout_seconds: 20
+
+cache:
+  ttl_seconds: 5   # CLAUDE.md §14: cache identical window queries for a few seconds during a demo burst
+
+defaults:
+  max_tokens: 1024
+  # Per-agent temperature overrides live in each agent, not here — CLAUDE.md
+  # §14 requires low temperature + structured JSON specifically for the
+  # Compound-Risk Agent, with higher creativity reserved for Explanation.
+  temperature: 0.7

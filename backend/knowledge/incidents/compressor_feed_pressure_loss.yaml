@@ -1,0 +1,72 @@
+# SYNTHETIC near-miss incident, authored for SentinelGrid (InnovaHack).
+# Narrative text is hand-written; the numbers cited in it are read directly
+# from an actual simulation run (source_simulation_run below), not invented.
+incident_id: compressor_feed_pressure_loss
+title: C Header Pressure Loss — Compressor Compensation Under Sustained Load
+scenario_type: feed_pressure_degradation
+equipment_zone: compressor
+cause_category: feed_pressure_fault
+idv_reference: 7
+idv_description: "C Header Pressure Loss — Reduced Availability (Stream 4)"
+source_simulation_run: compressor_feed_pressure_loss_seed.csv
+stages:
+  - stage: early_warning
+    record_index: 10
+    t_hours: 0.55
+    risk_level: low
+    narrative: >
+      Half an hour after C header pressure began degrading, the A&C feed
+      valve (XMV 4) has already opened to 67.1% — up from its ~61.3%
+      base-case position — while measured A&C feed flow (XMEAS 4) is
+      actually slightly below base case (8.21 kscmh vs. 9.35 kscmh
+      nominal). Reactor pressure (2682.2 kPa) is, if anything, marginally
+      below its 2705 kPa base case. This is a distinct signature from a
+      full feed loss: the control loop is opening the valve to chase a
+      pressure deficit it hasn't yet caught up to, rather than the valve
+      saturating against a dead supply. Nothing here would trip an alarm.
+      Recommended action: note the valve-vs-flow divergence for trend
+      comparison; check upstream C header instrumentation if the pattern
+      persists past the next few readings.
+  - stage: mid_escalation
+    record_index: 48
+    t_hours: 2.45
+    risk_level: moderate
+    narrative: >
+      By hour two and a half, the A&C feed valve (XMV 4) has swung to
+      86.5% — its widest excursion of the run, +41% relative to base case —
+      while measured feed flow (10.10 kscmh) has actually overshot base
+      case, showing the control loop working hard to compensate rather
+      than settling. The compressor recycle valve (XMV 5) has risen to
+      25.8% (base case 22.2%) and compressor work (XMEAS 20) to 356.9 kW
+      (base case 341.4 kW) as the compressor absorbs the resulting
+      pressure instability. Reactor pressure (2736.6 kPa) is still only
+      modestly elevated. This is the compound-risk signature: no reading
+      individually alarms, but a feed valve running near its top end
+      alongside rising compressor load is the plant working substantially
+      harder to deliver a deceptively normal-looking reactor feed rate.
+      Recommended action: escalate to Compliance Agent review for the
+      plant's reduced-feed-pressure contingency procedure; evaluate
+      whether upstream C supply can be restored before compressor duty
+      cycles further.
+  - stage: critical
+    record_index: 67
+    t_hours: 3.40
+    risk_level: high
+    narrative: >
+      At the run's peak, reactor pressure reaches 2842.8 kPa — 5.1% above
+      the 2705 kPa base case, and the highest reading of this run, though
+      still short of the 3000 kPa gauge trip that reactor_a_feed_loss
+      approaches — while the compressor recycle valve holds at 30.4%
+      (+36.7% relative to base case) and compressor work at 360.3 kW
+      (+5.5%). Unlike a clean escalation toward a single trip point, this
+      incident's risk is sustained abnormal compressor loading: the recycle
+      valve has now spent over two hours cycling well above its normal
+      band while absorbing an upstream pressure deficit, which is a
+      mechanical-wear and stability risk to the compressor itself, distinct
+      from the reactor-overpressure risk the other seed incidents center
+      on. Recommended action: this is the trigger point for Emergency
+      Agent escalation — recommend evaluating a controlled feed-rate
+      reduction to relieve compressor duty and/or confirming whether
+      backup C supply routing is available, subject to human approval
+      before any action is taken. No code path in this system may execute
+      that action automatically.

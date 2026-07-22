@@ -1,0 +1,33 @@
+# Base-case steady-state verification tolerances.
+#
+# Target values are NOT hardcoded here — they are computed at test time by
+# backend/simulation/tep/reference_data.py::compute_base_case_xmeas(), which
+# evaluates the ported TEFUNC once (noiseless, undisturbed) at the literal
+# TEINIT base-case state (constants.py::BASE_CASE_STATE). That state IS the
+# published Downs & Vogel (1993) operating point, transcribed directly from
+# the reference Fortran (teprob.f), not a secondary source. This file only
+# defines how much drift test_steady_state.py tolerates when the same
+# process is run closed-loop for several hours starting from that point.
+#
+# Citation: J.J. Downs and E.F. Vogel, "A plant-wide industrial process
+# control problem," Computers and Chemical Engineering, 17:245-255 (1993).
+
+citation: >
+  Downs & Vogel (1993) base-case operating point, as encoded in the
+  reference implementation's TEINIT routine (teprob.f) and evaluated via
+  this project's ported TEFUNC — see reference_data.py.
+
+# Asymmetric by design: tight for pressure/temperature (outcomes of the
+# energy/material balance, not directly setpoint-held), looser for
+# actively-controlled level/flow variables which can carry integrator offset.
+tolerances_pct:
+  reactor_pressure_kpa: 3.0
+  reactor_level_pct: 5.0
+  reactor_temperature_c: 2.0
+  separator_pressure_kpa: 3.0
+  separator_underflow_m3_hr: 8.0
+  stripper_level_pct: 5.0
+  stripper_pressure_kpa: 3.0
+  stripper_temperature_c: 3.0
+  compressor_work_kw: 5.0
+  product_sep_level_pct: 5.0

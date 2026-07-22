@@ -1,0 +1,42 @@
+# Phase 3 retrieval configuration (CLAUDE.md §7.4-§7.7).
+
+hybrid:
+  dense_top_k: 10
+  bm25_top_k: 10
+  rrf_k: 60          # standard reciprocal-rank-fusion constant (score = sum 1/(rrf_k + rank))
+  fused_top_k: 5      # candidates passed on to the reranker
+
+reranker:
+  model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_n: 3             # final candidates after reranking
+
+confidence:
+  # Cosine similarity is in [-1, 1] for normalized embeddings; ChromaDB
+  # reports squared-L2 distance by default for normalized vectors, which
+  # this project converts to a [0, 1] similarity score (1 - distance/2)
+  # before comparing against these thresholds — see retriever.py.
+  novel_condition_threshold: 0.55   # below this similarity: "novel condition", never a forced score
+  # KNOWN LIMITATION (retrieval-generalization-gap investigation): this
+  # threshold is effectively unreachable in practice. bge-small cosine
+  # similarity on this templated text compresses into a ~1%-wide band near
+  # 1.0 regardless of match correctness (fault-correct mean=0.9969,
+  # fault-wrong mean=0.9963, baseline/novel mean=0.9960 — statistically
+  # indistinguishable, overlapping stdevs). A relative/comparative
+  # alternative (best match's margin over the rest of its own retrieved
+  # candidate pool, tried 4 ways: margin-vs-pool-mean, rank1-vs-rank2 gap,
+  # margin-vs-best-other-incident, z-score) was tested against real
+  # held-out data and DISCARDED — in every formulation, baseline/novel
+  # windows scored as distinctive or MORE distinctive than genuine fault
+  # matches, because the small seed KB (3 incidents) means a fault window's
+  # pool is full of near-duplicate same-incident-sibling stages that
+  # shrink its own margin, while a baseline window's pool of unrelated
+  # incidents has more natural (but meaningless) score scatter. See
+  # margin_analysis2.py results in the session log. Remaining options:
+  # a supplementary numeric-feature-vector similarity channel (attacks the
+  # root cause — boilerplate-dominated text embeddings — rather than
+  # working around it), or documenting this as a stated scope limit.
+  high_confidence_threshold: 0.80
+  # CLAUDE.md §7.5: fast-only phase (minutes 5-19) is capped at "moderate"
+  # confidence regardless of raw similarity score, since less context is
+  # available than once the slow window exists too.
+  fast_only_confidence_cap: moderate

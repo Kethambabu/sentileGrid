@@ -1,0 +1,68 @@
+# SYNTHETIC near-miss incident, authored for SentinelGrid (InnovaHack).
+# Narrative text is hand-written; the numbers cited in it are read directly
+# from an actual simulation run (source_simulation_run below), not invented —
+# see CLAUDE.md §14 "Is this real incident data?" guidance.
+incident_id: reactor_kinetics_drift
+title: Reactor Kinetics Drift — Product Selectivity Shift
+scenario_type: reaction_kinetics_drift
+equipment_zone: reactor
+cause_category: process_kinetics_deviation
+idv_reference: 13
+idv_description: "Reaction Kinetics — Slow Drift"
+source_simulation_run: reactor_kinetics_drift_seed.csv
+stages:
+  - stage: early_warning
+    record_index: 60
+    t_hours: 3.05
+    risk_level: low
+    narrative: >
+      Three hours into the shift, reactor pressure and temperature both read
+      well within normal range (2687.7 kPa gauge, 120.39°C against a 2705
+      kPa / 120.40°C base case) — nothing here would trip a threshold alarm.
+      The only visible movement is in the compressor recycle valve position,
+      easing down from its ~22% base-case setting to 21.6%, and a small dip
+      in reactor feed Component A mole percent (32.23%, versus a 32.19%
+      base case — within noise). Individually these are unremarkable
+      readings. Recommended action at this stage: none required beyond
+      routine monitoring; log the recycle valve trend for comparison against
+      the next shift's readings.
+  - stage: mid_escalation
+    record_index: 160
+    t_hours: 8.05
+    risk_level: moderate
+    narrative: >
+      By hour eight, reactor pressure has drifted to 2560.8 kPa (down
+      roughly 5% from base case) while temperature remains essentially
+      unchanged at 120.37°C — a combination a single-variable pressure-low
+      alarm would likely not catch, since 2560 kPa is not itself an alarm
+      condition. The more telling signal is in product composition: G
+      product mole percent has fallen from its ~53.7% base-case reading to
+      52.3%, while H product mole percent has crept up to 43.7%, and the
+      compressor recycle valve has continued easing down to 16.6%. Read
+      together, this is the signature of a reaction selectivity shift (the
+      G:H product ratio moving toward H), not a feed or utility fault — no
+      single feed flow, temperature, or utility reading has stepped or
+      alarmed. Recommended action: flag for Compliance Agent review against
+      SOP-REACT-001's compound-trending guidance; begin tracking G:H ratio
+      as an explicit trend, not just its instantaneous value.
+  - stage: critical
+    record_index: 300
+    t_hours: 15.05
+    risk_level: high
+    narrative: >
+      By hour fifteen, the selectivity shift has continued: H product mole
+      percent has risen to 45.1% (from a 43.8% base case), reactor pressure
+      remains suppressed at 2575.7 kPa, and the compressor recycle valve has
+      partially recovered to 19.5% as downstream control loops compensate
+      for the changed vapor-liquid balance. Reactor temperature is still
+      within 0.1°C of base case (120.40°C) — a temperature-only monitoring
+      strategy would show nothing wrong at hour fifteen that it didn't
+      already show at hour three. This is the central lesson of this
+      incident: a genuine, worsening process deviation ran for over twelve
+      hours while every individually-alarmed variable stayed in its normal
+      band, visible only in the joint trend across recycle valve position
+      and product composition. Recommended action: this is the trigger
+      point for reaction kinetics drift (IDV13-class) to be escalated to
+      the Emergency Agent for a recommended intervention — reduce reactor
+      feed rate in a controlled ramp pending kinetics review — subject to
+      human approval before any action is taken.

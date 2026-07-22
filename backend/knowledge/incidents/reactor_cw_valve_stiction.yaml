@@ -1,0 +1,70 @@
+# SYNTHETIC near-miss incident, authored for SentinelGrid (InnovaHack).
+# Narrative text is hand-written; the numbers cited in it are read directly
+# from an actual simulation run (source_simulation_run below), not invented.
+incident_id: reactor_cw_valve_stiction
+title: Reactor Cooling Water Valve Sticking — Erratic Cooling Response
+scenario_type: cooling_valve_stiction
+equipment_zone: reactor
+cause_category: actuator_mechanical_fault
+idv_reference: 14
+idv_description: "Reactor Cooling Water Valve — Sticking"
+source_simulation_run: reactor_cw_valve_stiction_seed.csv
+stages:
+  - stage: early_warning
+    record_index: 60
+    t_hours: 3.05
+    risk_level: low
+    narrative: >
+      At hour three, reactor temperature (120.23°C) and pressure (2704.4
+      kPa) both read close to base case. The reactor cooling water valve
+      (XMV 10) is commanded to 36.3% — a plausible operating position on
+      its own. Nothing here would raise an alarm. The only way to catch
+      this early is to compare the valve's commanded position against its
+      recent history: this plant's cooling valve has historically held
+      close to its ~41% base-case position under steady load, so a
+      double-digit-percent swing this early in a shift, with no
+      corresponding feed or setpoint change to explain it, is the first
+      hint of an actuator responding abnormally rather than a genuine
+      process-driven need for more or less cooling. Recommended action:
+      none required yet; note the valve position deviation for trend
+      comparison.
+  - stage: mid_escalation
+    record_index: 200
+    t_hours: 10.05
+    risk_level: moderate
+    narrative: >
+      By hour ten, the reactor cooling water valve has moved to 30.9%,
+      continuing to swing rather than settle, while reactor cooling water
+      outlet temperature (XMEAS 21) reads 95.2°C — moving in the opposite
+      direction from what the valve's lower flow position would suggest.
+      Reactor temperature itself is still unremarkable at 120.06°C. This
+      divergence — valve position and cooling water outlet temperature not
+      moving together the way they normally would under smooth control — is
+      the compound signature of valve stiction: the controller is issuing
+      corrections, but the physical valve is not responding proportionally,
+      so the plant is not getting the cooling response its own control
+      loop is asking for. No single reading here crosses a threshold.
+      Recommended action: flag the reactor cooling water valve (XMV 10) for
+      maintenance inspection per SOP-COOL-002 before the next scheduled
+      outage, rather than waiting for a temperature excursion to force an
+      unplanned one.
+  - stage: critical
+    record_index: 317
+    t_hours: 15.90
+    risk_level: moderate
+    narrative: >
+      Near the end of the shift, reactor cooling water valve position has
+      swung to 51.0% — its widest excursion yet — and reactor temperature
+      has ticked up to 120.72°C, its highest reading of the incident, while
+      cooling water outlet temperature sits at 94.7°C, in a different
+      relationship to valve position than either of the two earlier stages.
+      No individual reading here is close to a trip threshold (temperature
+      trip is 175°C), which is exactly why this incident is logged as a
+      near-miss rather than an emergency: the erratic valve behavior never
+      escalated into a genuine thermal excursion during this run, but the
+      widening, non-repeating swings in valve-position-vs-cooling-response
+      are a worsening trend that would plausibly cross into
+      Emergency-Agent-relevant territory if left unaddressed across a
+      longer run. Recommended action: this is the threshold at which
+      SOP-COOL-002's valve maintenance action moves from "next scheduled
+      outage" to "prioritize before next shift."

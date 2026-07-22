@@ -1,0 +1,14 @@
+name: reactor_a_feed_loss
+description: >
+  IDV6 (A Feed Loss, stream 1). A abrupt feed-supply fault (distinct cause
+  from the other two seed incidents, not just a severity variant) that
+  starves the reactor of the A feed, driving reactor feed rate and pressure
+  down and composition off-ratio. Used to author the "reactor_a_feed_loss"
+  near-miss incident (Phase 2 knowledge base).
+duration_hours: 6
+idv_schedule:
+  - idv_number: 6
+    start_hour: 0.5
+noise_enabled: true
+random_seed: 1003
+synthetic_sensor_rules: {}

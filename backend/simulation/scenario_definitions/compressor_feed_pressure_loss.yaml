@@ -1,0 +1,16 @@
+name: compressor_feed_pressure_loss
+description: >
+  IDV7 (C Header Pressure Loss — Reduced Availability, Stream 4). A partial
+  feed-availability fault distinct from reactor_a_feed_loss (IDV6, a total
+  stream loss): here stream 4 (A/B/C feed) pressure is degraded rather than
+  cut off, which propagates through the compressor/recycle system — recycle
+  valve position and compressor work respond first — before reaching the
+  reactor. Used to author the "compressor_feed_pressure_loss" near-miss
+  incident (Phase 7 knowledge base expansion).
+duration_hours: 10
+idv_schedule:
+  - idv_number: 7
+    start_hour: 0.5
+noise_enabled: true
+random_seed: 1004
+synthetic_sensor_rules: {}

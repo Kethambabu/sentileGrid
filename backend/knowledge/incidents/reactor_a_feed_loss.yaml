@@ -1,0 +1,67 @@
+# SYNTHETIC near-miss incident, authored for SentinelGrid (InnovaHack).
+# Narrative text is hand-written; the numbers cited in it are read directly
+# from an actual simulation run (source_simulation_run below), not invented.
+incident_id: reactor_a_feed_loss
+title: A Feed Supply Loss — Valve Saturation and Rising Recycle Pressure
+scenario_type: feed_supply_loss
+equipment_zone: reactor
+cause_category: feed_supply_fault
+idv_reference: 6
+idv_description: "A Feed Loss (Stream 1)"
+source_simulation_run: reactor_a_feed_loss_seed.csv
+stages:
+  - stage: early_warning
+    record_index: 20
+    t_hours: 1.05
+    risk_level: low
+    narrative: >
+      Thirty minutes after A feed supply was lost upstream, reactor
+      pressure (2693.3 kPa) is still close to base case and reactor level
+      (74.9%) shows nothing unusual. The clearest early signal is not in
+      the reactor at all: the A feed control valve (XMV 3) has already
+      opened to 63.7% — well above its ~24.6% base-case position — while
+      measured A feed flow (XMEAS 1) reads essentially zero
+      (-0.002 kscmh). A valve opening hard while its corresponding
+      measured flow stays flat is a distinct signature from a valve simply
+      tracking a higher setpoint; it means the control loop is asking for
+      more flow and not getting it. Recommended action: this is the point
+      at which supply-side flow instrumentation (upstream of the plant
+      boundary) should be checked, before any downstream reactor variable
+      shows a consequence.
+  - stage: mid_escalation
+    record_index: 60
+    t_hours: 3.05
+    risk_level: moderate
+    narrative: >
+      By hour three, the A feed valve (XMV 3) has saturated fully open at
+      99.9%, confirming the control loop has no further authority to
+      compensate — and measured A feed flow is still ~0. The consequence
+      has now reached the reactor: pressure has climbed to 2831.7 kPa,
+      roughly 5% above the 2705 kPa base case, as downstream loops
+      compensate for the lost throughput by holding back other outflows.
+      Reactor level (75.5%) remains within its normal band. This is the
+      stage at which the incident becomes unambiguous from reactor
+      readings alone, roughly 2.5 hours after the valve-saturation signal
+      was already available. Recommended action: escalate to Compliance
+      Agent review for a controlled feed-loss response per plant feed-loss
+      contingency procedures; begin evaluating reactor feed rate reduction
+      to relieve pressure buildup rather than waiting for it to continue
+      climbing unchecked.
+  - stage: critical
+    record_index: 117
+    t_hours: 5.90
+    risk_level: high
+    narrative: >
+      Just under six hours in, reactor pressure has reached 2956.5 kPa —
+      within 1.5% of the 3000 kPa gauge hard trip — with the A feed valve
+      still saturated at 99.7% open and measured A feed flow still
+      essentially zero. This run did not reach the trip point within the
+      six hours simulated, which is exactly what makes it a near-miss
+      rather than an incident report: continued operation at this pressure
+      trajectory without intervention would plausibly cross 3000 kPa gauge
+      within the following hour. Recommended action: this is the trigger
+      point for Emergency Agent escalation — recommend an immediate,
+      controlled reactor feed-rate reduction and/or a controlled shutdown
+      sequence pending confirmation that upstream A feed supply has been
+      restored, subject to human approval before any action is taken. No
+      code path in this system may execute that action automatically.

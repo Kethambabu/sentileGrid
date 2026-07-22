@@ -1,0 +1,14 @@
+name: reactor_kinetics_drift
+description: >
+  IDV13 (Reaction Kinetics — Slow Drift). A gradual, compound-risk-style
+  incident: no single reading crosses an alarm threshold quickly — reactor
+  temperature and pressure creep upward together over hours as the reaction
+  kinetics drift from their nominal rate. Used to author the
+  "reactor_kinetics_drift" near-miss incident (Phase 2 knowledge base).
+duration_hours: 16
+idv_schedule:
+  - idv_number: 13
+    start_hour: 0.5
+noise_enabled: true
+random_seed: 1001
+synthetic_sensor_rules: {}

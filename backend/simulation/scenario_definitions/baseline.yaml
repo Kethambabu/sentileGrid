@@ -1,0 +1,10 @@
+name: baseline
+description: >
+  No-fault, closed-loop base case. Used by the Phase 1 steady-state
+  verification test — the process should hold near the published Downs &
+  Vogel (1993) operating point for the full run duration.
+duration_hours: 8
+idv_schedule: []
+noise_enabled: true
+random_seed: null
+synthetic_sensor_rules: {}

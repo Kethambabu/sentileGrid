@@ -1,0 +1,70 @@
+# SYNTHETIC near-miss incident, authored for SentinelGrid (InnovaHack).
+# Narrative text is hand-written; the numbers cited in it are read directly
+# from an actual simulation run (source_simulation_run below), not invented.
+incident_id: separator_cooling_duty_loss
+title: Separator Cooling Duty Loss — Deepening Intermittent Pulses
+scenario_type: cooling_duty_pulse_loss
+equipment_zone: separator
+cause_category: cooling_duty_fault
+idv_reference: 18
+idv_description: "Intermittent pulse-shaped reduction in separator cooling duty"
+source_simulation_run: separator_cooling_duty_loss_seed.csv
+stages:
+  - stage: early_warning
+    record_index: 41
+    t_hours: 2.10
+    risk_level: low
+    narrative: >
+      Just over two hours in, separator cooling water outlet temperature
+      (XMEAS 22) has dropped to 73.95°C from its 77.30°C base case — a
+      sign of reduced heat pickup, meaning less cooling duty is actually
+      being delivered even though nothing has been commanded to change.
+      Separator temperature (XMEAS 13's companion, product_sep_temp) has
+      only ticked up to 81.72°C from 80.11°C base case, and separator
+      pressure (2633.4 kPa) is essentially unchanged from its 2633.7 kPa
+      base case. This is the distinguishing early signature of this
+      incident: the cooling-water-side reading moves first and further
+      than the pressure/temperature readings that would normally be
+      checked first, because this is an intermittent pulse fault, not a
+      sustained one — a single-point check here could easily miss it
+      between pulses. Recommended action: none required yet; note the
+      early cooling-water divergence for trend comparison across the next
+      few readings.
+  - stage: mid_escalation
+    record_index: 50
+    t_hours: 2.55
+    risk_level: moderate
+    narrative: >
+      By hour two and a half, the first cooling-duty pulse has reached its
+      peak: cooling water outlet temperature has fallen to 67.02°C (-13.3%
+      vs. the 77.30°C base case) and separator temperature has risen to
+      84.08°C (+5.0%), while separator pressure (2611.4 kPa) has only just
+      begun to move, still less than 1% below base case. The pressure
+      reading — the one most likely to be checked on its own — is the
+      least informative of the three at this stage; the cooling-water and
+      temperature readings are already well outside their normal band five
+      minutes before pressure shows anything. Recommended action: escalate
+      to Compliance Agent review for the plant's cooling-duty-loss
+      contingency procedure; confirm whether this is an isolated pulse or
+      the start of a recurring pattern before deciding on intervention.
+  - stage: critical
+    record_index: 195
+    t_hours: 9.80
+    risk_level: high
+    narrative: >
+      Nearly ten hours in, a later pulse has gone deeper than the first:
+      cooling water outlet temperature has fallen to 66.11°C (-14.5% vs.
+      base case, the run's lowest reading), separator temperature has
+      risen to 84.94°C (+6.0%, the run's highest), and — unlike the first
+      pulse, where pressure barely moved — separator pressure has now
+      dropped to 2503.3 kPa (-4.9% vs. base case), the widest pressure
+      deviation of the whole run. The fact that a later pulse is deeper
+      and broader (now visibly affecting all three readings together
+      rather than just the cooling-water signal) is the compound-risk
+      pattern worth flagging: this isn't a one-off transient, it's an
+      intermittent fault whose individual pulses are trending worse over
+      time. Recommended action: this is the trigger point for Emergency
+      Agent escalation — recommend inspecting the separator cooling duty
+      control system (valve/utility supply) before the next pulse,
+      subject to human approval before any action is taken. No code path
+      in this system may execute that action automatically.

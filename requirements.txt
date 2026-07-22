@@ -1,0 +1,26 @@
+numpy>=1.26
+scipy>=1.11
+pydantic>=2.5
+pyyaml>=6.0
+python-dotenv>=1.0
+pandas>=2.1
+pytest>=7.4
+
+# Phase 2: RAG pipeline (knowledge base seeding)
+sentence-transformers>=2.7
+chromadb>=0.5
+duckdb>=1.0
+rank-bm25>=0.2
+pypdf>=4.0
+
+# Phase 4: agent layer + orchestration
+langgraph>=0.2
+huggingface_hub>=0.24
+groq>=0.9
+
+# Phase 5: API + dashboard
+fastapi>=0.110
+uvicorn[standard]>=0.29
+streamlit>=1.35
+websockets>=12.0
+requests>=2.31

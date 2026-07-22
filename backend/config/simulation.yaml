@@ -1,0 +1,30 @@
+integration:
+  substep_hours: 0.0002777777777777778  # 1 second, matches the reference benchmark
+  method: euler                          # single-evaluation fixed-step (see tep/process_model.py TEProcess docstring)
+  max_hours_per_run: 200
+
+sampling:
+  record_interval_minutes: 3
+  reactor_feed_purge_analyzer_interval_hours: 0.1
+  product_analyzer_interval_hours: 0.25
+
+noise:
+  enabled: true
+  seed: null
+
+controller:
+  scheme: russell_chiang_braatz_base_case
+  fast_loop_period_seconds: 3
+  composition_loop_period_seconds: 360
+  slow_composition_loop_period_seconds: 900
+
+paths:
+  reference_steady_state: backend/config/tep_reference_steady_state.yaml
+  scenario_dir: backend/simulation/scenario_definitions
+  output_dir: data/simulation_runs
+
+thresholds:
+  divergence:
+    reactor_pressure_kpa_gauge_trip: 3000.0
+    reactor_level_pct_min: 2.0   # teprob.f trip bound (VLR/35.3145 ft3 basis), expressed as raw XMEAS(8) is a separate %; see process_model.py checks
+    reactor_temperature_c_trip: 175.0

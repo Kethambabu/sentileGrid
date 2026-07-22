@@ -1,0 +1,17 @@
+name: separator_cooling_duty_loss
+description: >
+  IDV18 (intermittent pulse-shaped reduction in separator cooling duty QUS,
+  up to -25% at full pulse height). A genuinely different temporal signature
+  from the existing library's step (IDV6), slow-drift (IDV13), and stiction
+  (IDV14) faults: cooling duty rises, holds, and decays in pulses rather than
+  moving monotonically, so separator temperature/pressure ride the pulse
+  pattern instead of trending in one direction. Used to author the
+  "separator_cooling_duty_loss" near-miss incident (Phase 7 knowledge base
+  expansion).
+duration_hours: 10
+idv_schedule:
+  - idv_number: 18
+    start_hour: 0.5
+noise_enabled: true
+random_seed: 1005
+synthetic_sensor_rules: {}

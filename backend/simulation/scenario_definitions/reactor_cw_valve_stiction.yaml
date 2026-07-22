@@ -1,0 +1,14 @@
+name: reactor_cw_valve_stiction
+description: >
+  IDV14 (Reactor Cooling Water Valve — Sticking). The reactor cooling water
+  valve fails to respond smoothly to controller commands, producing lagged,
+  oscillatory cooling response and stepped reactor temperature excursions.
+  Used to author the "reactor_cw_valve_stiction" near-miss incident (Phase 2
+  knowledge base).
+duration_hours: 16
+idv_schedule:
+  - idv_number: 14
+    start_hour: 0.5
+noise_enabled: true
+random_seed: 1002
+synthetic_sensor_rules: {}

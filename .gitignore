@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Virtual environment
+.venv/
+
+# Env / secrets
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code local state — machine-specific settings and runtime locks,
+# not shared project config.
+.claude/
+
+# Generated simulation output — regenerable via run_simulation.py.
+# Exception: the *_seed.csv runs are committed — CLAUDE.md §7.3/§14 near-miss
+# incidents are authored against specific records in these exact runs, and
+# §14's "non-persistent disk" fix requires the seed data survive a restart
+# without live re-ingestion.
+data/simulation_runs/*.csv
+data/simulation_runs/*.parquet
+!data/simulation_runs/.gitkeep
+!data/simulation_runs/*_seed.csv
+
+# Logs
+logs/*.log
+!logs/.gitkeep
+# Stray logs from manually-started dev servers (uvicorn/streamlit), if run
+# from the repo root instead of redirected into logs/.
+/*.log
+
+# Held-out evaluation runs — deterministic given fixed seeds, regenerable via
+# backend/evaluation/generate_holdout_runs.py. Deliberately never referenced
+# by seed_knowledge_base.py — see that script's module docstring (CLAUDE.md
+# §9.3 train/test split by scenario run ID).
+data/evaluation/
+
+# Later-phase local artifacts — WAL mode (CLAUDE.md §8) leaves -wal/-shm
+# journal files alongside the main db file; all regenerate on next run.
+# Scoped to the app databases by name, NOT a blanket *.sqlite3 — that would
+# also catch data/chroma_db/chroma.sqlite3, which CLAUDE.md §14 requires to
+# be committed (see note below).
+data/sentinelgrid.sqlite3*
+data/approvals.sqlite3*
+
+# Vector index — CLAUDE.md §14 requires this be committed (or at least
+# regenerable via seed_knowledge_base.py), not gitignored: non-persistent
+# disk on free cloud hosting must reload from disk, not re-ingest live.
+# data/chroma_db/ (including its own chroma.sqlite3 metadata file) is
+# intentionally NOT excluded here.

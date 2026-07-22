@@ -1,0 +1,29 @@
+component_1,component_2,compatible,hazard_note
+A,B,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+A,C,true,"Intended reactor feedstock pair (A&C combined feed, stream 4)."
+A,D,true,Intended reactor feedstock pair; reacts under catalyzed reactor conditions to form G.
+A,E,true,Intended reactor feedstock pair; reacts under catalyzed reactor conditions to form H.
+A,F,true,F is a reaction by-product; no known hazardous interaction with A at process conditions.
+A,G,true,G is a reaction product of A; no known hazardous interaction post-reaction.
+A,H,true,H is a reaction product of A; no known hazardous interaction post-reaction.
+B,C,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+B,D,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+B,E,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+B,F,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+B,G,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+B,H,true,Normal process co-existence; B is inert (non-condensable) at process conditions.
+C,D,true,Intended reactor feedstock pair.
+C,E,true,Intended reactor feedstock pair.
+C,F,true,C is a reactor feedstock; F is a by-product. No known hazardous interaction.
+C,G,true,C is a reactor feedstock; G is a reaction product. No known hazardous interaction.
+C,H,true,C is a reactor feedstock; H is a reaction product. No known hazardous interaction.
+D,E,false,"CAUTION: uncontrolled direct mixing of concentrated D and E outside normal catalyzed reactor conditions is flagged in this synthetic dataset as a compatibility caution — treat any D/E co-mingling outside the reactor (e.g. in a maintenance drain or spill scenario) as requiring isolation review before proceeding."
+D,F,true,D is a reactor feedstock; F is a by-product. No known hazardous interaction.
+D,G,true,D is a reactor feedstock; G is its primary reaction product. No known hazardous interaction post-reaction.
+D,H,true,D is a reactor feedstock; H is a reaction product. No known hazardous interaction.
+E,F,true,E is a reactor feedstock; F is a by-product. No known hazardous interaction.
+E,G,true,E is a reactor feedstock; G is a reaction product. No known hazardous interaction.
+E,H,true,E is a reactor feedstock; H is its primary reaction product. No known hazardous interaction post-reaction.
+F,G,true,Both downstream by-product/product streams; no known hazardous interaction.
+F,H,true,Both downstream by-product/product streams; no known hazardous interaction.
+G,H,true,Co-mingle normally in the stripper liquid product stream (stream 11); no known hazardous interaction.
