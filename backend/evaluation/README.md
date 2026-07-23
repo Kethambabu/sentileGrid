@@ -43,17 +43,18 @@ From `eval_report_20260722T125112.json` (6 holdout runs — the original 3 fault
 
 **CLAUDE.md §9.2/§14 requires the system to output "novel condition, low
 confidence" instead of a forced risk score whenever retrieval doesn't
-genuinely support one.** As currently built, that safeguard's trigger
+genuinely support one.** As originally built, that safeguard's trigger
 condition — cosine similarity below `novel_condition_threshold` in
-`backend/config/retrieval.yaml` — essentially never fires, which is why the
-false-positive rate above is 100%: every negative-control (no-fault) window
-gets matched to *some* incident in the KB with high confidence instead of
-being correctly flagged as novel.
+`backend/config/retrieval.yaml` — essentially never fired, which is why the
+false-positive rate was 100%: every negative-control (no-fault) window got
+matched to *some* incident in the KB with high confidence instead of being
+correctly flagged as novel.
 
-**Root cause, confirmed by direct measurement, not guesswork:** `bge-small-en-v1.5`
-cosine similarity on this project's templated window-description text
-compresses into a roughly 1%-wide band near 1.0 regardless of whether the
-match is correct, wrong, or there's no real match at all:
+**Root cause of the original (cosine) problem, confirmed by direct
+measurement, not guesswork:** `bge-small-en-v1.5` cosine similarity on this
+project's templated window-description text compresses into a roughly
+1%-wide band near 1.0 regardless of whether the match is correct, wrong, or
+there's no real match at all:
 
 | group | n | mean similarity | stdev |
 | --- | --- | --- | --- |
@@ -88,11 +89,75 @@ shrinks its own margin, while a baseline window's pool of unrelated
 incidents has more natural — but meaningless — score scatter. This is a
 genuine negative result, not an unexplored option.
 
-**What would actually fix it:** a similarity channel computed on the raw
-numeric window vectors directly, rather than on text descriptions embedded
-by a general-purpose sentence encoder — the boilerplate template structure
-of the text is what's drowning out the numeric content in the current
-approach. Not implemented; flagged here as the next concrete step if this
-is revisited, per CLAUDE.md's own precedent of disclosing scope limits
-(e.g. TEP's 20-fault coverage) rather than implying broader coverage than
-tested.
+### Fix implemented: numeric feature-vector similarity channel — real improvement, gap not closed
+
+A supplementary similarity channel computed directly on the raw numeric
+window vectors (`backend/rag/chunker.py::compute_feature_vector` +
+`backend/rag/numeric_similarity.py`), rather than on text descriptions
+embedded by a general-purpose sentence encoder, was implemented and measured
+against real held-out data across **three independent sampling passes**
+(2026-07-23, `sample_every` = 10, 25, and 40 — different windows sampled
+each time, to check the finding wasn't an artifact of one particular
+sample):
+
+| group | pass 1 (n) | pass 2 (n) | pass 3 (n) |
+| --- | --- | --- | --- |
+| fault run, correct top-1 match | 0.227 (33) | 0.262 (8) | 0.193 (9) |
+| fault run, wrong top-1 match | 0.174 (67) | 0.156 (34) | 0.206 (16) |
+| baseline run (should be "novel") | 0.313 (16) | 0.266 (6) | 0.333 (4) |
+
+**What worked:** unlike cosine similarity, "wrong" matches are measurably
+lower than "correct" matches on this channel (a real, if modest, signal —
+this metric genuinely helps distinguish a good match from a bad one).
+
+**What didn't:** in **all three** independent passes, the baseline
+(negative-control) group's mean similarity **exceeded** the fault-correct
+group's mean — the opposite of what novelty detection needs, and consistent
+enough across three separately-sampled passes to rule out sampling noise.
+**This is a structural limitation of the metric, not a threshold-tuning
+problem.** Root cause (confirmed by inspection): a true no-fault window's
+deviation-from-baseline vector is near-zero across all 16 summary channels,
+and it best-matches against KB chunks from incidents' own early-warning
+stages — which are *also* near-zero, since an incident hasn't escalated yet
+at that stage. Two near-zero vectors are always numerically close to each
+other regardless of whether they represent the same real precedent, while
+two genuinely escalated (large, noisy) fault vectors need much closer
+alignment to score as similar. This magnitude bias is distinct from the
+original cosine boilerplate-dominance problem — a different failure mode,
+not the same one recurring.
+
+**Practical consequence, measured directly (not inferred):** every
+threshold tested traded one failure mode for another —
+
+- `threshold = 0.5` (initial reasoned guess): `is_novel_condition` fired on
+  **100% of both fault and negative-control samples** — universal caution,
+  meaning the Compound-Risk Agent would never report a real risk score at
+  all under this setting.
+- `threshold = 0.20` (first recalibration attempt, chosen to sit just above
+  the fault-wrong band): **100% false-positive rate** on the negative
+  control (reverting to the original problem) **and** suppressed **58.6%**
+  of real fault detections into "novel, no score" — worse than either
+  single failure mode alone.
+- `threshold = 0.25` (current, documented in `retrieval.yaml` as a
+  best-effort compromise sitting between the fault-wrong and fault-correct
+  bands): not presented as validated — expect both false positives on true
+  negatives and false suppression on genuine faults at rates that vary by
+  which window arrives, since no global cutoff on this metric separates the
+  groups cleanly.
+
+**Honest bottom line: this fix is a real, partial improvement (the
+"wrong-vs-correct" discrimination is genuine signal that didn't exist
+before) but it does NOT close the novelty-detection gap required by
+CLAUDE.md §9.2.** Report it as "attempted, root cause partially addressed,
+new residual limitation discovered and documented" — not as "fixed."
+
+**What would actually fix it (not implemented, flagged as the next concrete
+step per this project's own precedent of disclosing scope limits rather
+than implying broader coverage than tested):** gate on the *live window's
+own* deviation magnitude (its feature vector's norm against a fixed
+"is this near baseline at all" bound) as a first-pass filter, independent of
+best-match similarity to any KB chunk. That would stop a genuinely flat live
+window from ever being compared against early-stage incident chunks in the
+first place — recognizing "nothing is happening" on the live window's own
+terms, rather than trying to infer it from resemblance to an arbitrary KB
+chunk after the fact.

@@ -1,4 +1,6 @@
-from backend.rag.chunker import build_incident_chunks, chunk_static_text, window_to_text
+import json
+
+from backend.rag.chunker import build_incident_chunks, chunk_static_text, compute_feature_vector, window_to_text
 from backend.rag.loaders.incident_loader import load_incidents_from_dir
 from backend.rag.loaders.simulation_run_loader import SIMULATION_RUNS_DIR, load_simulation_records
 from backend.rag.seed_knowledge_base import INCIDENTS_DIR
@@ -57,3 +59,61 @@ def test_build_incident_chunks_produces_narrative_and_window_chunks():
         assert chunk.metadata["risk_level"] in ("low", "moderate", "high")
     # reactor_a_feed_loss's stage record_indices (20, 60, 117) are all >= 20 → slow window exists for every stage
     assert len(slow_chunks) == len(incident.stages)
+
+
+def test_build_incident_chunks_attaches_feature_vector_to_window_metadata():
+    """retriever.py's numeric feature-similarity channel (the fix for
+    retrieval.yaml's documented text-embedding cosine-similarity gap) reads
+    this metadata key at retrieval time — confirm it's actually populated."""
+    incidents = load_incidents_from_dir(INCIDENTS_DIR)
+    incident = next(i for i in incidents if i.incident_id == "reactor_a_feed_loss")
+    records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
+    _doc_chunks, window_chunks = build_incident_chunks(incident, records)
+
+    for chunk in window_chunks:
+        assert "feature_vector_json" in chunk.metadata
+        vector = json.loads(chunk.metadata["feature_vector_json"])
+        assert isinstance(vector, list)
+        assert len(vector) > 0
+        assert all(isinstance(v, (int, float)) for v in vector)
+
+
+def test_compute_feature_vector_empty_records_returns_zero_vector():
+    vector = compute_feature_vector([])
+    assert all(v == 0.0 for v in vector)
+
+
+def test_compute_feature_vector_near_zero_for_baseline_matching_window():
+    """A window whose last record sits at the known baseline operating
+    point should produce a near-zero deviation vector — the reference case
+    a genuinely novel/baseline live window's numeric similarity check
+    depends on."""
+    for incident in load_incidents_from_dir(INCIDENTS_DIR):
+        records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
+        pre_fault_records = [r for r in records if r.t_hours < incident.stages[0].t_hours]
+        if len(pre_fault_records) < 5:
+            continue
+        vector = compute_feature_vector(pre_fault_records[:5])
+        # Pre-fault (near-baseline) deviations should be small relative to
+        # a genuinely faulted window's — not asserting an exact bound since
+        # normal process noise is real, just that it's a modest vector.
+        assert all(abs(v) < 20 for v in vector)
+        return
+    raise AssertionError("no incident had enough pre-fault records to test against")
+
+
+def test_compute_feature_vector_large_for_clearly_deviated_window():
+    """A window from deep into an incident's critical stage should produce
+    a numerically larger deviation vector than one from its own pre-fault
+    baseline — this is the discriminative signal retriever.py relies on."""
+    incident = next(i for i in load_incidents_from_dir(INCIDENTS_DIR) if i.incident_id == "reactor_a_feed_loss")
+    records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
+    critical_stage = next(s for s in incident.stages if s.stage == "critical")
+
+    pre_fault_vector = compute_feature_vector(records[:5])
+    critical_pair = window_pair_at(records, critical_stage.record_index)
+    critical_vector = compute_feature_vector(critical_pair.fast_records)
+
+    pre_fault_magnitude = sum(v * v for v in pre_fault_vector) ** 0.5
+    critical_magnitude = sum(v * v for v in critical_vector) ** 0.5
+    assert critical_magnitude > pre_fault_magnitude

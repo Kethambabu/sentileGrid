@@ -65,16 +65,32 @@ def test_retrieves_own_incident_as_top_match_at_critical_stage(seeded_retriever)
     assert "reactor_a_feed_loss" in matched_incident_ids
 
 
+def _strict_novelty_config() -> dict:
+    """Impossibly strict on both channels — whichever one a match actually
+    has populated (feature_similarity is preferred when present, per
+    retriever._decide_confidence; the text threshold is the fallback for
+    matches without a stored feature vector)."""
+    config = load_retrieval_config()
+    config["confidence"]["novel_condition_threshold"] = 0.999
+    config["confidence"]["novel_condition_feature_similarity_threshold"] = 999.0
+    return config
+
+
+def _lenient_novelty_config() -> dict:
+    config = load_retrieval_config()
+    config["confidence"]["novel_condition_threshold"] = -1.0
+    config["confidence"]["novel_condition_feature_similarity_threshold"] = -1.0
+    return config
+
+
 def test_strict_novelty_threshold_forces_novel_condition(seeded_retriever):
     """Mechanism test, independent of embedding-similarity fuzziness: an
     impossibly strict threshold must force novel_condition=True even for an
     incident's own (otherwise strongly-matching) records."""
     incident = load_incidents_from_dir(INCIDENTS_DIR)[0]
     records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
-    strict_config = load_retrieval_config()
-    strict_config["confidence"]["novel_condition_threshold"] = 0.999
 
-    retriever = LiveRetriever(client=seeded_retriever.client, config=strict_config)
+    retriever = LiveRetriever(client=seeded_retriever.client, config=_strict_novelty_config())
     outcome = retriever.retrieve(records[:SLOW_WINDOW_SIZE])
     assert outcome.is_novel_condition is True
     assert outcome.confidence == ConfidenceLevel.NOVEL
@@ -83,10 +99,8 @@ def test_strict_novelty_threshold_forces_novel_condition(seeded_retriever):
 def test_lenient_novelty_threshold_never_flags_novel(seeded_retriever):
     incident = load_incidents_from_dir(INCIDENTS_DIR)[0]
     records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
-    lenient_config = load_retrieval_config()
-    lenient_config["confidence"]["novel_condition_threshold"] = -1.0
 
-    retriever = LiveRetriever(client=seeded_retriever.client, config=lenient_config)
+    retriever = LiveRetriever(client=seeded_retriever.client, config=_lenient_novelty_config())
     outcome = retriever.retrieve(records[:SLOW_WINDOW_SIZE])
     assert outcome.is_novel_condition is False
 
@@ -94,9 +108,7 @@ def test_lenient_novelty_threshold_never_flags_novel(seeded_retriever):
 def test_metadata_filter_restricts_matches(seeded_retriever):
     incident = load_incidents_from_dir(INCIDENTS_DIR)[0]
     records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
-    lenient_config = load_retrieval_config()
-    lenient_config["confidence"]["novel_condition_threshold"] = -1.0
-    retriever = LiveRetriever(client=seeded_retriever.client, config=lenient_config)
+    retriever = LiveRetriever(client=seeded_retriever.client, config=_lenient_novelty_config())
 
     # "stripper" and "condenser" remain genuinely unused zones even after the
     # Phase 7 library expansion (reactor/compressor/separator are all used
@@ -112,10 +124,29 @@ def test_metadata_filter_matches_separator_zone(seeded_retriever):
     from one (test_metadata_filter_restricts_matches above)."""
     incident = next(i for i in load_incidents_from_dir(INCIDENTS_DIR) if i.incident_id == "separator_cooling_duty_loss")
     records = load_simulation_records(SIMULATION_RUNS_DIR / incident.source_simulation_run)
-    lenient_config = load_retrieval_config()
-    lenient_config["confidence"]["novel_condition_threshold"] = -1.0
-    retriever = LiveRetriever(client=seeded_retriever.client, config=lenient_config)
+    retriever = LiveRetriever(client=seeded_retriever.client, config=_lenient_novelty_config())
 
     outcome = retriever.retrieve(records[:SLOW_WINDOW_SIZE], where={"equipment_zone": "separator"})
     assert outcome.matches != []
     assert all(m.equipment_zone == "separator" for m in outcome.matches)
+
+
+def test_novel_live_window_against_real_seeded_kb_is_flagged_novel(seeded_retriever):
+    """Regression test for the exact gap the audit flagged as previously
+    untestable: a genuinely novel/baseline-only window compared against the
+    real seeded KB (default thresholds, no threshold overrides) should now
+    report is_novel_condition=True via the numeric feature-similarity
+    channel, since baseline deviates meaningfully from every seeded fault
+    incident's window on the underlying physical channels."""
+    from backend.rag.loaders.simulation_run_loader import SIMULATION_RUNS_DIR as RUNS_DIR
+    from backend.rag.loaders.simulation_run_loader import load_simulation_records as load_records
+
+    baseline_path = next(RUNS_DIR.glob("baseline_*.csv"), None)
+    if baseline_path is None:
+        pytest.skip("No baseline_*.csv seed run available")
+    records = load_records(baseline_path)
+
+    outcome = seeded_retriever.retrieve(records[:SLOW_WINDOW_SIZE])
+    assert outcome.phase == RetrievalPhase.FAST_AND_SLOW
+    assert outcome.is_novel_condition is True
+    assert outcome.confidence == ConfidenceLevel.NOVEL

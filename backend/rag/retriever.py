@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import json
 from enum import Enum
 
 from pydantic import BaseModel
@@ -26,9 +27,10 @@ from ..database.vector_store import get_client, get_or_create_collections
 from ..simulation.models import SimulationRecord
 from ..utils.config_loader import load_yaml_config
 from .bm25_index import BM25Index
-from .chunker import window_to_text
+from .chunker import compute_feature_vector, window_to_text
 from .embedder import Embedder
 from .hybrid_retrieval import FusedResult, hybrid_query
+from .numeric_similarity import vector_similarity
 from .reranker import Reranker
 from .windowing import FAST_WINDOW_SIZE, SLOW_WINDOW_SIZE, window_pair_at
 
@@ -69,6 +71,7 @@ class RetrievalMatch(BaseModel):
     fast_similarity: float | None = None
     slow_similarity: float | None = None
     combined_similarity: float
+    feature_similarity: float | None = None
     narrative_text: str | None = None
 
 
@@ -79,7 +82,9 @@ class RetrievalOutcome(BaseModel):
     matches: list[RetrievalMatch]
 
 
-def _match_from_fused(result: FusedResult, fast_sim: float | None, slow_sim: float | None, combined: float) -> RetrievalMatch:
+def _match_from_fused(
+    result: FusedResult, fast_sim: float | None, slow_sim: float | None, combined: float, feature_sim: float | None = None
+) -> RetrievalMatch:
     meta = result.metadata
     return RetrievalMatch(
         chunk_id=result.chunk_id,
@@ -91,7 +96,52 @@ def _match_from_fused(result: FusedResult, fast_sim: float | None, slow_sim: flo
         fast_similarity=fast_sim,
         slow_similarity=slow_sim,
         combined_similarity=combined,
+        feature_similarity=feature_sim,
     )
+
+
+def _feature_similarity_from_metadata(metadata: dict, live_vector: list[float]) -> float | None:
+    """None when the candidate has no stored feature vector (e.g. seeded
+    before this channel existed) — callers fall back to the text-embedding
+    combined_similarity in that case, so this degrades gracefully rather
+    than crashing on pre-migration data."""
+    raw = metadata.get("feature_vector_json")
+    if raw is None:
+        return None
+    try:
+        stored_vector = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return vector_similarity(live_vector, stored_vector)
+
+
+def _decide_confidence(matches: list[RetrievalMatch], conf_cfg: dict, fast_only_cap: str | None = None) -> tuple[bool, ConfidenceLevel]:
+    """Novelty/confidence decision for the best-ranked match. Prefers the
+    numeric feature-similarity channel (retrieval.yaml's documented fix for
+    text-embedding cosine similarity not discriminating real matches from
+    wrong ones — see chunker.compute_feature_vector / numeric_similarity.py)
+    and only falls back to the raw text-embedding combined_similarity when
+    no feature vector was available for the best match."""
+    if not matches:
+        return True, ConfidenceLevel.NOVEL
+
+    best = matches[0]
+    if best.feature_similarity is not None:
+        score = best.feature_similarity
+        novel_threshold = conf_cfg["novel_condition_feature_similarity_threshold"]
+        high_threshold = conf_cfg["high_confidence_feature_similarity_threshold"]
+    else:
+        score = best.combined_similarity
+        novel_threshold = conf_cfg["novel_condition_threshold"]
+        high_threshold = conf_cfg["high_confidence_threshold"]
+
+    if score < novel_threshold:
+        return True, ConfidenceLevel.NOVEL
+    if fast_only_cap is not None:
+        return False, ConfidenceLevel(fast_only_cap)
+    if score >= high_threshold:
+        return False, ConfidenceLevel.HIGH
+    return False, ConfidenceLevel.MODERATE
 
 
 class LiveRetriever:
@@ -143,21 +193,24 @@ class LiveRetriever:
 
         pair = window_pair_at(records, end_index=n - 1)
         fast_text = window_to_text(pair.fast_records, "fast")
+        live_fast_vector = compute_feature_vector(pair.fast_records)
         fast_fused = self._hybrid(self.collections["fast_windows"], self._fast_bm25, fast_text, where)
         fast_reranked = self.reranker.rerank(fast_text, fast_fused, top_n=rerank_top_n)
 
         if not pair.has_slow_window:
             matches = [
-                _match_from_fused(result, fast_sim=result.dense_similarity, slow_sim=None, combined=result.dense_similarity or 0.0)
+                _match_from_fused(
+                    result, fast_sim=result.dense_similarity, slow_sim=None, combined=result.dense_similarity or 0.0,
+                    feature_sim=_feature_similarity_from_metadata(result.metadata, live_fast_vector),
+                )
                 for result, _rerank_score in fast_reranked
             ]
             matches.sort(key=lambda m: m.combined_similarity, reverse=True)
-            best = matches[0].combined_similarity if matches else -1.0
-            is_novel = best < conf_cfg["novel_condition_threshold"]
-            confidence = ConfidenceLevel.NOVEL if is_novel else ConfidenceLevel(conf_cfg["fast_only_confidence_cap"])
+            is_novel, confidence = _decide_confidence(matches, conf_cfg, fast_only_cap=conf_cfg["fast_only_confidence_cap"])
             outcome_phase = RetrievalPhase.FAST_ONLY
         else:
             slow_text = window_to_text(pair.slow_records, "slow")
+            live_slow_vector = compute_feature_vector(pair.slow_records)
             slow_fused = self._hybrid(self.collections["slow_windows"], self._slow_bm25, slow_text, where)
             slow_reranked = self.reranker.rerank(slow_text, slow_fused, top_n=rerank_top_n)
 
@@ -175,17 +228,15 @@ class LiveRetriever:
                 # the two, not their average, so one strong + one weak match
                 # doesn't get reported as an overall strong match.
                 combined = min(fast_sim, slow_sim)
-                matches.append(_match_from_fused(fast_result, fast_sim, slow_sim, combined))
+
+                fast_feature_sim = _feature_similarity_from_metadata(fast_result.metadata, live_fast_vector)
+                slow_feature_sim = _feature_similarity_from_metadata(slow_result.metadata, live_slow_vector)
+                feature_sim = min(fast_feature_sim, slow_feature_sim) if fast_feature_sim is not None and slow_feature_sim is not None else None
+
+                matches.append(_match_from_fused(fast_result, fast_sim, slow_sim, combined, feature_sim=feature_sim))
             matches.sort(key=lambda m: m.combined_similarity, reverse=True)
 
-            best = matches[0].combined_similarity if matches else -1.0
-            is_novel = best < conf_cfg["novel_condition_threshold"]
-            if is_novel:
-                confidence = ConfidenceLevel.NOVEL
-            elif best >= conf_cfg["high_confidence_threshold"]:
-                confidence = ConfidenceLevel.HIGH
-            else:
-                confidence = ConfidenceLevel.MODERATE
+            is_novel, confidence = _decide_confidence(matches, conf_cfg)
             outcome_phase = RetrievalPhase.FAST_AND_SLOW
 
         if fetch_narratives:

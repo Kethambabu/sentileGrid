@@ -16,6 +16,7 @@ separate collections.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from ..simulation.models import SimulationRecord, XMEASVector, XMVVector
@@ -228,6 +229,32 @@ def window_to_text(records: list[SimulationRecord], window_kind: str) -> str:
     return " ".join(parts)
 
 
+def compute_feature_vector(records: list[SimulationRecord]) -> list[float]:
+    """Threshold-normalized deviation-from-baseline vector across
+    WINDOW_SUMMARY_FIELDS, in the same order every time — a numeric sibling
+    to window_to_text's qualitative description, used by retriever.py as a
+    supplementary similarity channel for the novel-condition/confidence gate
+    (retrieval.yaml's documented "retrieval-generalization-gap" finding: raw
+    text-embedding cosine similarity on this templated text compresses into
+    a ~1%-wide band regardless of match correctness, so it can't discriminate
+    a real match from a wrong one on its own). Each channel's deviation is
+    divided by that channel's own threshold (the same one _describe_deviation
+    uses), so channels with very different natural scales/noise levels
+    contribute comparably instead of the largest-magnitude channel dominating
+    a raw Euclidean distance.
+    """
+    if not records:
+        return [0.0 for _ in WINDOW_SUMMARY_FIELDS]
+    last = records[-1]
+    vector = []
+    for group, name, _unit in WINDOW_SUMMARY_FIELDS:
+        value = _field(last, group, name)
+        baseline = _baseline_value(group, name)
+        threshold = _threshold_for(group, baseline)
+        vector.append((value - baseline) / threshold)
+    return vector
+
+
 def build_incident_chunks(
     incident: IncidentDefinition, records: list[SimulationRecord]
 ) -> tuple[list[DocumentChunk], list[WindowChunk]]:
@@ -256,12 +283,14 @@ def build_incident_chunks(
         doc_chunks.extend(narrative_parts)
 
         pair: WindowPair = window_pair_at(records, stage.record_index)
+        fast_metadata = {**metadata, "feature_vector_json": json.dumps(compute_feature_vector(pair.fast_records))}
         window_chunks.append(
-            WindowChunk(chunk_id=chunk_id, window_kind="fast", text=window_to_text(pair.fast_records, "fast"), metadata=metadata)
+            WindowChunk(chunk_id=chunk_id, window_kind="fast", text=window_to_text(pair.fast_records, "fast"), metadata=fast_metadata)
         )
         if pair.has_slow_window:
+            slow_metadata = {**metadata, "feature_vector_json": json.dumps(compute_feature_vector(pair.slow_records))}
             window_chunks.append(
-                WindowChunk(chunk_id=chunk_id, window_kind="slow", text=window_to_text(pair.slow_records, "slow"), metadata=metadata)
+                WindowChunk(chunk_id=chunk_id, window_kind="slow", text=window_to_text(pair.slow_records, "slow"), metadata=slow_metadata)
             )
 
     return doc_chunks, window_chunks

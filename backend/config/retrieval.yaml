@@ -17,24 +17,68 @@ confidence:
   # before comparing against these thresholds — see retriever.py.
   novel_condition_threshold: 0.55   # below this similarity: "novel condition", never a forced score
   # KNOWN LIMITATION (retrieval-generalization-gap investigation): this
-  # threshold is effectively unreachable in practice. bge-small cosine
-  # similarity on this templated text compresses into a ~1%-wide band near
-  # 1.0 regardless of match correctness (fault-correct mean=0.9969,
-  # fault-wrong mean=0.9963, baseline/novel mean=0.9960 — statistically
-  # indistinguishable, overlapping stdevs). A relative/comparative
-  # alternative (best match's margin over the rest of its own retrieved
-  # candidate pool, tried 4 ways: margin-vs-pool-mean, rank1-vs-rank2 gap,
-  # margin-vs-best-other-incident, z-score) was tested against real
-  # held-out data and DISCARDED — in every formulation, baseline/novel
-  # windows scored as distinctive or MORE distinctive than genuine fault
-  # matches, because the small seed KB (3 incidents) means a fault window's
-  # pool is full of near-duplicate same-incident-sibling stages that
-  # shrink its own margin, while a baseline window's pool of unrelated
-  # incidents has more natural (but meaningless) score scatter. See
-  # margin_analysis2.py results in the session log. Remaining options:
-  # a supplementary numeric-feature-vector similarity channel (attacks the
-  # root cause — boilerplate-dominated text embeddings — rather than
-  # working around it), or documenting this as a stated scope limit.
+  # threshold is effectively unreachable in practice via text-embedding
+  # cosine similarity alone. bge-small cosine similarity on this templated
+  # text compresses into a ~1%-wide band near 1.0 regardless of match
+  # correctness (fault-correct mean=0.9969, fault-wrong mean=0.9963,
+  # baseline/novel mean=0.9960 — statistically indistinguishable, overlapping
+  # stdevs). A relative/comparative alternative (best match's margin over the
+  # rest of its own retrieved candidate pool, tried 4 ways) was tested
+  # against real held-out data and DISCARDED — see margin_analysis2.py
+  # results in the session log. FIX ATTEMPTED: retriever.py now computes a
+  # supplementary numeric-feature-vector similarity channel (chunker.
+  # compute_feature_vector + numeric_similarity.vector_similarity) that
+  # attacks the root cause — boilerplate-dominated text embeddings — rather
+  # than working around it. novel_condition_threshold/high_confidence_threshold
+  # above remain the fallback used only when a candidate has no stored
+  # feature vector (pre-migration data); the two thresholds below are the
+  # ones actually governing behavior once the knowledge base is re-seeded.
+  #
+  # RESULT, measured against real held-out data (2026-07-23, 3 INDEPENDENT
+  # sampling passes at sample_every=10, 25, and 40): this channel is a REAL,
+  # PARTIAL improvement with a NEWLY DISCOVERED, REPRODUCIBLE residual
+  # limitation — this is NOT a threshold-calibration problem, it is a
+  # structural limitation of the metric itself. Measured top-1-match
+  # feature_similarity by group, one column per independent pass:
+  #   fault run, correct top-1 match:  n=33/8/9   mean=0.227/0.262/0.193
+  #   fault run, wrong top-1 match:    n=67/34/16 mean=0.174/0.156/0.206
+  #   baseline/negative-control run:   n=16/6/4   mean=0.313/0.266/0.333
+  # In ALL THREE independent passes, negative-control's mean similarity
+  # EXCEEDS fault-correct's mean — the opposite of what novelty detection
+  # needs, and consistent enough across passes to rule out sampling noise as
+  # the explanation. Root cause (confirmed by inspection): a true no-fault
+  # window's deviation-from-baseline vector is near-zero across all 16
+  # channels, and it best-matches against KB chunks from incidents' own
+  # early-warning stages, which are ALSO near-zero (an incident hasn't
+  # escalated yet at that stage) — two near-zero vectors are always
+  # numerically close to each other regardless of whether they represent the
+  # same real precedent, while two genuinely escalated (large, noisy) fault
+  # vectors need much closer alignment to score as similar. This magnitude
+  # bias is distinct from (not the same failure as) the original cosine
+  # boilerplate-dominance problem, and it means NO SINGLE GLOBAL THRESHOLD ON
+  # THIS METRIC can correctly separate "no fault" from "genuine fault,
+  # correctly matched" — every threshold tested traded one failure mode for
+  # another: threshold=0.5 (initial guess) produced is_novel_condition=True
+  # on 100% of BOTH fault and negative-control samples (universal caution,
+  # zero usable risk scores ever); threshold=0.20 (first recalibration
+  # attempt) produced 100% false-positive rate on the negative control AND
+  # suppressed 58.6% of real fault detections — strictly worse on both axes
+  # at that lower sample size. The value below (0.25) is a documented
+  # best-effort compromise sitting between the consistently-separated
+  # fault-wrong band (~0.18) and fault-correct band (~0.23) — it is NOT a
+  # validated novelty cutoff and should NOT be presented as one; expect
+  # "novel condition" to both over-fire on genuine faults and under-fire on
+  # true negatives at unpredictable rates depending on which window arrives.
+  # NEXT STEP if revisited (not implemented — flagged per this project's own
+  # precedent of disclosing scope limits rather than implying coverage that
+  # isn't there): gate on the LIVE window's OWN deviation magnitude (its
+  # feature vector's norm against a fixed "is this near baseline at all"
+  # bound) as a first-pass filter, independent of best-match similarity to
+  # any KB chunk — that would stop a genuinely flat live window from ever
+  # being compared against early-stage incident chunks in the first place,
+  # rather than trying to fix it after the fact via a similarity threshold.
+  novel_condition_feature_similarity_threshold: 0.25
+  high_confidence_feature_similarity_threshold: 0.40
   high_confidence_threshold: 0.80
   # CLAUDE.md §7.5: fast-only phase (minutes 5-19) is capped at "moderate"
   # confidence regardless of raw similarity score, since less context is
