@@ -8,10 +8,10 @@ def _assessment(risk_latency, compliance_latency, explanation_latency):
     outcome = RetrievalOutcome(phase=RetrievalPhase.FAST_AND_SLOW, is_novel_condition=False, confidence=ConfidenceLevel.HIGH, matches=[])
     risk = RiskAssessment(
         risk_score=50.0, is_novel_condition=False, confidence="high", contributing_factors=[], recommended_action="x",
-        cited_chunk_ids=[], reasoning="y", llm_tier_used="huggingface", latency_ms=risk_latency,
+        cited_chunk_ids=[], reasoning="y", llm_tier_used="gemini", latency_ms=risk_latency,
     )
-    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="huggingface", latency_ms=compliance_latency)
-    explanation = ExplanationResult(narrative="x", cited_chunk_ids=[], llm_tier_used="huggingface", latency_ms=explanation_latency)
+    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="gemini", latency_ms=compliance_latency)
+    explanation = ExplanationResult(narrative="x", cited_chunk_ids=[], llm_tier_used="gemini", latency_ms=explanation_latency)
     return HoldoutAssessment(
         scenario_name="test", seed=1, record_index=10, total_records=100, t_hours=0.5, expected_incident_id="test",
         expected_risk_level="low", retrieval_outcome=outcome, risk_assessment=risk, compliance_result=compliance, explanation=explanation,

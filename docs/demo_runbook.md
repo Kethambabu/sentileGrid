@@ -4,7 +4,7 @@ CLAUDE.md §14's Demo-Specific Risk table calls for two things: a rehearsed live
 
 ## Before the room
 
-1. Confirm `.env` has valid `HF_API_TOKEN` and `GROQ_API_KEY` (Section 5a) — check the "Active LLM tier" indicator shows a real tier once the first assessment runs, not "unknown."
+1. Confirm `.env` has valid `GEMINI_API_KEY` and `GROQ_API_KEY` (Section 5a) — check the "Active LLM tier" indicator shows a real tier once the first assessment runs, not "unknown."
 2. Start the backend: `uvicorn backend.api.main:app --reload`
 3. Start the dashboard: `streamlit run frontend/app.py`
 4. Open the Streamlit URL. Confirm the top banner reads "Connected to backend API" — if it doesn't, the backend isn't reachable and nothing else will work.
@@ -15,7 +15,7 @@ CLAUDE.md §14's Demo-Specific Risk table calls for two things: a rehearsed live
 Most narratively polished of the five — a clean escalation with a clear "the valve told you 2.5 hours before the pressure did" story. Use this unless a judge specifically asks to see something else.
 
 1. **Overview page.** Select `reactor_a_feed_loss` from the scenario dropdown. Leave duration/tick/assessment-interval at defaults. Click **Start run**.
-2. **Narrate while it runs:** "This is replaying a 6-hour simulation compressed into real time. Every 5 records, the agent pipeline — Sensor, Trend, Retrieval, Compound-Risk, Compliance, Explanation — reassesses the current state." Point at the **Active LLM tier** metric: "This shows which of our two free-tier LLM providers actually served the last call — Hugging Face primary, Groq fallback, with no silent hang if both are down."
+2. **Narrate while it runs:** "This is replaying a 6-hour simulation compressed into real time. Every 5 records, the agent pipeline — Sensor, Trend, Retrieval, Compound-Risk, Compliance, Explanation — reassesses the current state." Point at the **Active LLM tier** metric: "This shows which of our two free-tier LLM providers actually served the last call — Gemini primary, Groq fallback, with no silent hang if both are down."
 3. **Watch the risk score climb.** Early assessments should read LOW with a novel-condition or low-confidence flag (not enough window yet — Section 7.5's fast-only cap). By mid-run it should read MODERATE, climbing to HIGH near the end.
 4. **When risk score reads HIGH and an Emergency Agent escalation fires:** point out the red banner ("Emergency Agent escalated — approval_id ... pending"). This is the human-in-the-loop moment: "No code path in this system executes a plant action. It stops here and waits for a human."
 5. **Switch to the Approvals page.** Show the pending approval card. Try clicking Approve immediately — it's disabled. Expand "View evidence / explanation," read a line of the narrative aloud, click "Mark evidence as viewed" — now Approve/Reject light up. This is the alert-fatigue fix (Section 14): reflexive clicks are structurally impossible.

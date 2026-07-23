@@ -16,10 +16,10 @@ def _outcome(is_novel: bool, confidence: ConfidenceLevel) -> RetrievalOutcome:
 
 
 def _router(content: str) -> LLMRouter:
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content=content)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content=content)
     groq = FakeLLMProvider(LLMTier.GROQ, content=content)
-    return LLMRouter(hf_provider=hf, groq_provider=groq, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    return LLMRouter(gemini_provider=gemini, groq_provider=groq, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
     })
 
@@ -60,16 +60,16 @@ def test_llm_tier_used_is_recorded():
     content = json.dumps({"risk_score": 10.0, "contributing_factors": [], "recommended_action": "x", "cited_chunk_ids": [], "reasoning": "y"})
     agent = CompoundRiskAgent(router=_router(content))
     result = agent.assess(_trend_features(), _outcome(is_novel=False, confidence=ConfidenceLevel.MODERATE), run_id="run-1")
-    assert result.llm_tier_used == "huggingface"
+    assert result.llm_tier_used == "gemini"
 
 
 def test_reasoning_unavailable_when_both_tiers_fail():
     """CLAUDE.md §14: both LLM tiers down must produce a visible 'reasoning
     unavailable' result, never guess a risk score and never raise uncaught."""
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, should_fail=True)
     groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
     })
     agent = CompoundRiskAgent(router=router)

@@ -65,7 +65,7 @@ class CompoundRiskAgent:
                 contributing_factors=["Reasoning service unavailable — both LLM tiers failed"],
                 recommended_action="Escalate for manual review — reasoning service unavailable.",
                 cited_chunk_ids=[],
-                reasoning="Both Hugging Face and Groq LLM tiers failed; refusing to guess a risk score.",
+                reasoning="Both Gemini and Groq LLM tiers failed; refusing to guess a risk score.",
                 llm_tier_used="unavailable",
                 latency_ms=0.0,
                 reasoning_unavailable=True,

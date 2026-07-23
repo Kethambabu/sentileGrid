@@ -19,12 +19,12 @@ def _assessment(cited_chunk_ids, available_chunk_ids, is_novel=False, explanatio
     )
     risk = RiskAssessment(
         risk_score=None if is_novel else 60.0, is_novel_condition=is_novel, confidence="high", contributing_factors=[],
-        recommended_action="x", cited_chunk_ids=cited_chunk_ids, reasoning="y", llm_tier_used="huggingface", latency_ms=1.0,
+        recommended_action="x", cited_chunk_ids=cited_chunk_ids, reasoning="y", llm_tier_used="gemini", latency_ms=1.0,
     )
-    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="huggingface", latency_ms=1.0)
+    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="gemini", latency_ms=1.0)
     explanation = ExplanationResult(
         narrative="text", cited_chunk_ids=explanation_cited if explanation_cited is not None else cited_chunk_ids,
-        llm_tier_used="huggingface", latency_ms=1.0,
+        llm_tier_used="gemini", latency_ms=1.0,
     )
     return HoldoutAssessment(
         scenario_name="test", seed=1, record_index=10, total_records=100, t_hours=0.5, expected_incident_id="x",

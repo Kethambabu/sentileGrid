@@ -1,9 +1,39 @@
 """Shared LLM fallback router (CLAUDE.md §5): every LLM-calling agent goes
 through this, not a hardcoded provider. Two-tier fallback, in order —
-Hugging Face Serverless Inference API, then Groq — no third/offline tier,
-no HF Inference Providers routing as the "second" tier (that can silently
-route to Groq under the hood, which isn't real redundancy with a direct
-Groq call).
+Gemini (Google AI Studio), then Groq — no third/offline tier. These two are
+fully independent backends/companies, so a genuine fallback, not fake
+redundancy.
+
+HISTORY (2026-07-23): the original primary tier was Hugging Face's free
+"Serverless Inference API" (api-inference.huggingface.co). That endpoint
+was retired entirely (DNS-dead); its replacement (router.huggingface.co,
+"Inference Providers") is metered pay-as-you-go — free accounts get only
+$0.10/month credit, exhausted almost immediately at real usage. Cerebras
+was evaluated as an alternative and rejected: despite blog claims of a
+card-free ongoing free tier, its actual current policy (verified directly
+against a real account, not just docs) requires a payment method before
+any API access works at all, even to unlock the $5/30-day trial credit —
+confirmed live with a real 402 Payment Required. Google AI Studio's Gemini
+API was verified live (real 200 OK, real content, no billing setup) as a
+genuinely free, card-free, ongoing tier — that's what's wired in below.
+HF is left implemented but unused or removed here entirely by design; see
+git history if it needs to be reinstated.
+
+KNOWN LIMIT (verified live via a real 429 response body, not docs/blogs):
+gemini-2.5-flash's free tier caps at 20 requests/day per project+model
+(quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier) — exhausts
+after roughly 5 real assessment cycles (3-4 Gemini calls each). Accepted
+as a known constraint rather than reordering tiers: Groq's real quota
+comfortably covers the rest of the day once Gemini is exhausted, and the
+two-tier fallback already handles this correctly with no code changes
+needed.
+
+MODEL NAME IS ACCOUNT-DEPENDENT (2026-07-24): a second, newer Google
+account got a real 404 on the exact same "gemini-2.5-flash" name — "no
+longer available to new users." gemini-2.0-flash/lite 429'd (quota) and
+gemini-3.5-flash 503'd (overloaded) on that account. The "-latest" alias
+(gemini-flash-latest) worked live on both accounts, so config uses that
+instead of a pinned dated version — see backend/config/llm.yaml.
 
 Deliberately does NOT import backend.database: this module sits below the
 agent/orchestrator layer and must not depend upward on it. Callers that
@@ -23,6 +53,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
+import requests
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -35,7 +66,7 @@ load_dotenv(REPO_ROOT / ".env")
 
 
 class LLMTier(str, Enum):
-    HUGGING_FACE = "huggingface"
+    GEMINI = "gemini"
     GROQ = "groq"
     UNAVAILABLE = "unavailable"
 
@@ -64,12 +95,12 @@ class ReasoningServiceUnavailableError(RuntimeError):
     """Both tiers failed. CLAUDE.md §14: fail visibly, never hang or
     silently retry forever."""
 
-    def __init__(self, hf_error: Exception | None, groq_error: Exception | None) -> None:
+    def __init__(self, gemini_error: Exception | None, groq_error: Exception | None) -> None:
         super().__init__(
             f"Reasoning service unavailable — both LLM tiers failed. "
-            f"HF error: {hf_error!r}. Groq error: {groq_error!r}."
+            f"Gemini error: {gemini_error!r}. Groq error: {groq_error!r}."
         )
-        self.hf_error = hf_error
+        self.gemini_error = gemini_error
         self.groq_error = groq_error
 
 
@@ -80,46 +111,100 @@ class LLMProvider(ABC):
     def complete(self, request: LLMRequest) -> LLMResponse: ...
 
 
-class HuggingFaceProvider(LLMProvider):
-    """Hugging Face's old free "Serverless Inference API"
-    (api-inference.huggingface.co) was retired — it now 404/DNS-fails
-    entirely. The replacement (router.huggingface.co, the "Inference
-    Providers" router) is a metered, pay-as-you-go service: free accounts
-    get $0.10/month credit, then billing kicks in. This is a real change to
-    CLAUDE.md §2's "zero paid resources" constraint that we cannot code our
-    way around — flagged explicitly rather than silently absorbed.
+class GeminiProvider(LLMProvider):
+    """Google AI Studio's Gemini API — verified live 2026-07-23 as a
+    genuinely free, card-free, ongoing tier (real 200 OK response, no
+    billing setup), unlike Hugging Face's now-metered Inference Providers
+    or Cerebras' payment-method-gated trial (see module docstring). Uses
+    plain `requests` rather than a new SDK dependency, to avoid pulling in
+    another native/compiled package after this project's earlier torch/
+    chromadb DLL-compatibility issues on this machine.
 
-    `provider` MUST be pinned to a specific backend (never "auto") and MUST
-    NOT be a provider Groq also resolves to — otherwise "tier 1 fails, fall
-    back to tier 2 Groq" can silently mean "call Groq twice," which is not
-    real redundancy (CLAUDE.md §5's exact concern about Inference Providers
-    routing). Verified 2026-07-23: the configured model
-    (Qwen/Qwen2.5-72B-Instruct) is served by featherless-ai/novita/deepinfra
-    — none of which are Groq — so pinning to one of those is safe. The HF
-    account token also needs the "Make calls to Inference Providers"
-    permission explicitly granted (not on by default for fine-grained
-    tokens) — without it every call 403s regardless of model/provider choice.
+    `gemini-2.0-flash` was found to have a free-tier quota of 0 on this
+    account (immediate 429) — `gemini-2.5-flash` is the one with real free
+    quota available. Re-verify if switching models.
+
+    The current model (resolved via the "-latest" alias, see llm.yaml) is a
+    "thinking" model: it spends part of `max_tokens` on internal reasoning
+    before visible output, reported separately as `thoughtsTokenCount`. At
+    very small `max_tokens` (verified live at 10) it can spend the entire
+    budget thinking and return `finishReason: MAX_TOKENS` with an empty
+    `content` (no `parts` key at all) — handled explicitly below rather
+    than left as a raw KeyError.
+
+    CORRECTION — this is NOT only a small-max_tokens problem: the same
+    thinking-budget mechanism was also observed producing truncated,
+    malformed JSON (missing even the leading '{') at this project's real
+    production size (compliance_agent's actual max_tokens=400 call, a real
+    live run, not a synthetic test) — thinking apparently consumed enough
+    of the budget that the visible JSON output itself got cut off mid-token,
+    not just reduced to empty. `thinkingConfig` below is the attempted fix,
+    UNVERIFIED LIVE as of 2026-07-24 (quota exhausted on every available key
+    before it could be re-tested) — confirm with a real call before
+    trusting this closes the gap.
     """
 
-    tier = LLMTier.HUGGING_FACE
+    tier = LLMTier.GEMINI
+    _BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    def __init__(self, model: str, timeout_seconds: float, provider: str = "featherless-ai", api_token: str | None = None) -> None:
+    def __init__(self, model: str, timeout_seconds: float, api_key: str | None = None) -> None:
         self.model = model
         self.timeout_seconds = timeout_seconds
-        self.provider = provider
-        self.api_token = api_token if api_token is not None else os.environ.get("HF_API_TOKEN")
+        self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
 
     def complete(self, request: LLMRequest) -> LLMResponse:
-        if not self.api_token:
-            raise RuntimeError("HF_API_TOKEN is not set")
-        from huggingface_hub import InferenceClient
+        if not self.api_key:
+            raise RuntimeError("GEMINI_API_KEY is not set")
 
-        client = InferenceClient(model=self.model, provider=self.provider, token=self.api_token, timeout=self.timeout_seconds)
-        messages = [{"role": m.role, "content": m.content} for m in request.messages]
+        system_parts = [m.content for m in request.messages if m.role == "system"]
+        contents = [
+            {"role": "model" if m.role == "assistant" else "user", "parts": [{"text": m.content}]}
+            for m in request.messages if m.role != "system"
+        ]
+        generation_config: dict = {
+            "temperature": request.temperature, "maxOutputTokens": request.max_tokens,
+            # UNVERIFIED LIVE (2026-07-24, all available Gemini keys hit their
+            # 20/day quota before this could be tested with a real call —
+            # confirm before trusting). Root cause this addresses: the
+            # resolved model (gemini-flash-latest -> gemini-3.6-flash, a
+            # "thinking" model) was observed spending its entire max_tokens
+            # budget on invisible reasoning, leaving too little for the
+            # actual JSON output and producing truncated/malformed JSON
+            # (missing the leading '{') even at this project's real 400-600
+            # token budgets — reproduced live in compliance_agent's actual
+            # production call, not just a synthetic test. "low" is the
+            # documented value for Gemini 3.x's thinkingLevel (2.5-series
+            # models use a different thinkingBudget=0 field instead, per
+            # https://ai.google.dev/gemini-api/docs/generate-content/thinking
+            # — re-check which applies if the "-latest" alias ever resolves
+            # to a 2.5-series model again).
+            "thinkingConfig": {"thinkingLevel": "low"},
+        }
+        if request.json_mode:
+            generation_config["responseMimeType"] = "application/json"
+        payload: dict = {"contents": contents, "generationConfig": generation_config}
+        if system_parts:
+            payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+
         start = time.monotonic()
-        result = client.chat_completion(messages=messages, temperature=request.temperature, max_tokens=request.max_tokens)
+        resp = requests.post(
+            f"{self._BASE_URL}/{self.model}:generateContent",
+            params={"key": self.api_key},
+            json=payload,
+            timeout=self.timeout_seconds,
+        )
         latency_ms = (time.monotonic() - start) * 1000.0
-        content = result.choices[0].message.content
+        resp.raise_for_status()
+        data = resp.json()
+        candidate = data["candidates"][0]
+        parts = candidate.get("content", {}).get("parts")
+        if not parts:
+            raise RuntimeError(
+                f"Gemini returned no output text (finishReason={candidate.get('finishReason')!r}) — "
+                f"likely spent the entire max_tokens budget on internal reasoning "
+                f"(thoughtsTokenCount={data.get('usageMetadata', {}).get('thoughtsTokenCount')!r})"
+            )
+        content = parts[0]["text"]
         return LLMResponse(content=content, tier_used=self.tier, model_name=self.model, latency_ms=latency_ms)
 
 
@@ -172,15 +257,14 @@ def load_llm_config(path: Path = DEFAULT_LLM_CONFIG_PATH) -> dict:
 class LLMRouter:
     def __init__(
         self,
-        hf_provider: LLMProvider | None = None,
+        gemini_provider: LLMProvider | None = None,
         groq_provider: LLMProvider | None = None,
         config: dict | None = None,
         on_response: Callable[[LLMRequest, LLMResponse], None] | None = None,
     ) -> None:
         self.config = config or load_llm_config()
-        self.hf_provider = hf_provider or HuggingFaceProvider(
-            model=self.config["huggingface"]["model"], timeout_seconds=self.config["huggingface"]["timeout_seconds"],
-            provider=self.config["huggingface"].get("provider", "featherless-ai"),
+        self.gemini_provider = gemini_provider or GeminiProvider(
+            model=self.config["gemini"]["model"], timeout_seconds=self.config["gemini"]["timeout_seconds"],
         )
         self.groq_provider = groq_provider or GroqProvider(
             model=self.config["groq"]["model"], timeout_seconds=self.config["groq"]["timeout_seconds"]
@@ -209,18 +293,18 @@ class LLMRouter:
         if cached is not None:
             return cached
 
-        hf_error: Exception | None = None
+        gemini_error: Exception | None = None
         try:
-            response = self.hf_provider.complete(request)
-            self.active_tier = LLMTier.HUGGING_FACE
-        except Exception as exc:  # noqa: BLE001 — deliberately broad: any HF failure triggers fallback
-            hf_error = exc
+            response = self.gemini_provider.complete(request)
+            self.active_tier = LLMTier.GEMINI
+        except Exception as exc:  # noqa: BLE001 — deliberately broad: any Gemini failure triggers fallback
+            gemini_error = exc
             try:
                 response = self.groq_provider.complete(request)
                 self.active_tier = LLMTier.GROQ
             except Exception as groq_exc:  # noqa: BLE001
                 self.active_tier = LLMTier.UNAVAILABLE
-                raise ReasoningServiceUnavailableError(hf_error, groq_exc) from groq_exc
+                raise ReasoningServiceUnavailableError(gemini_error, groq_exc) from groq_exc
 
         self._store_cache(cache_key, response)
         if self.on_response is not None:

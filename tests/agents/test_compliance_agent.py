@@ -7,19 +7,19 @@ from tests.fakes import FakeLLMProvider
 
 
 def _router(content: str) -> LLMRouter:
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content=content)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content=content)
     groq = FakeLLMProvider(LLMTier.GROQ, content=content)
-    return LLMRouter(hf_provider=hf, groq_provider=groq, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    return LLMRouter(gemini_provider=gemini, groq_provider=groq, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
     })
 
 
 def _failing_router() -> LLMRouter:
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, should_fail=True)
     groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
-    return LLMRouter(hf_provider=hf, groq_provider=groq, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    return LLMRouter(gemini_provider=gemini, groq_provider=groq, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
     })
 

@@ -6,7 +6,7 @@ from tests.fakes import FakeLLMProvider
 
 def _config():
     return {
-        "huggingface": {"model": "fake-hf-model", "timeout_seconds": 5},
+        "gemini": {"model": "fake-gemini-model", "timeout_seconds": 5},
         "groq": {"model": "fake-groq-model", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 5},
         "defaults": {"max_tokens": 512, "temperature": 0.5},
@@ -18,22 +18,22 @@ def _request():
 
 
 def test_primary_tier_success_does_not_touch_fallback():
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content="hf response")
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content="gemini response")
     groq = FakeLLMProvider(LLMTier.GROQ, content="groq response")
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config=_config())
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config=_config())
 
     response = router.complete(_request())
-    assert response.tier_used == LLMTier.HUGGING_FACE
-    assert response.content == "hf response"
-    assert len(hf.calls) == 1
+    assert response.tier_used == LLMTier.GEMINI
+    assert response.content == "gemini response"
+    assert len(gemini.calls) == 1
     assert len(groq.calls) == 0
-    assert router.active_tier == LLMTier.HUGGING_FACE
+    assert router.active_tier == LLMTier.GEMINI
 
 
 def test_primary_failure_falls_back_to_groq():
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, should_fail=True)
     groq = FakeLLMProvider(LLMTier.GROQ, content="groq response")
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config=_config())
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config=_config())
 
     response = router.complete(_request())
     assert response.tier_used == LLMTier.GROQ
@@ -42,9 +42,9 @@ def test_primary_failure_falls_back_to_groq():
 
 
 def test_both_tiers_failing_raises_visibly():
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, should_fail=True)
     groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config=_config())
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config=_config())
 
     with pytest.raises(ReasoningServiceUnavailableError):
         router.complete(_request())
@@ -52,33 +52,33 @@ def test_both_tiers_failing_raises_visibly():
 
 
 def test_identical_requests_are_cached_within_ttl():
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content="hf response")
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content="gemini response")
     groq = FakeLLMProvider(LLMTier.GROQ, content="groq response")
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config=_config())
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config=_config())
 
     r1 = router.complete(_request())
     r2 = router.complete(_request())
     assert r1.cached is False
     assert r2.cached is True
-    assert len(hf.calls) == 1  # second call served from cache, not a real request
+    assert len(gemini.calls) == 1  # second call served from cache, not a real request
 
 
 def test_different_requests_are_not_cached_together():
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content="hf response")
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content="gemini response")
     groq = FakeLLMProvider(LLMTier.GROQ, content="groq response")
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config=_config())
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config=_config())
 
     router.complete(_request())
     router.complete(LLMRequest(messages=[LLMMessage(role="user", content="different")], temperature=0.1, max_tokens=100))
-    assert len(hf.calls) == 2
+    assert len(gemini.calls) == 2
 
 
 def test_on_response_callback_invoked_on_success():
     calls = []
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content="hf response")
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content="gemini response")
     groq = FakeLLMProvider(LLMTier.GROQ, content="groq response")
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config=_config(), on_response=lambda req, resp: calls.append((req, resp)))
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config=_config(), on_response=lambda req, resp: calls.append((req, resp)))
 
     router.complete(_request())
     assert len(calls) == 1
-    assert calls[0][1].tier_used == LLMTier.HUGGING_FACE
+    assert calls[0][1].tier_used == LLMTier.GEMINI

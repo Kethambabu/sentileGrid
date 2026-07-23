@@ -38,7 +38,7 @@ Copy `.env.example` to `.env` and fill in two free-tier keys (no card required):
 
 | Key | Get it at | Used for |
 | --- | --- | --- |
-| `HF_API_TOKEN` | https://huggingface.co/settings/tokens | Primary LLM tier (Hugging Face Serverless Inference) |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Primary LLM tier (Google Gemini) |
 | `GROQ_API_KEY` | https://console.groq.com/keys | Fallback LLM tier |
 
 Everything else (embeddings, ChromaDB, SQLite, DuckDB, the simulator) runs fully local with no account. See CLAUDE.md §5a for details, and §5 for why the fallback chain is structured the way it is (no single-provider dependency, no silent hang if both tiers fail).

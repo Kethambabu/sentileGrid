@@ -7,9 +7,9 @@ real response bodies you should expect to see.
 
 ## Setup
 
-1. Make sure `.env` at the repo root has valid `HF_API_TOKEN` and `GROQ_API_KEY`
+1. Make sure `.env` at the repo root has valid `GEMINI_API_KEY` and `GROQ_API_KEY`
    values (see `.env.example` for the variable names — get real values from
-   https://huggingface.co/settings/tokens and https://console.groq.com/keys).
+   https://aistudio.google.com/apikey and https://console.groq.com/keys).
 2. Start the backend:
    ```bash
    uvicorn backend.api.main:app --reload
@@ -49,7 +49,7 @@ Expand **POST /runs** → **Try it out**. Replace the example request body with:
 - `assessment_interval_records: 20` means the full LLM-backed agent pipeline
   (Sensor→Trend→Retrieval→Compound-Risk→Compliance→Explanation→Emergency) only
   runs every 20th record instead of every 5th (the default) — this matters
-  because each assessment makes 3–4 **real** calls to Hugging Face/Groq, and
+  because each assessment makes 3–4 **real** calls to Gemini/Groq, and
   fewer assessments means faster + cheaper testing. Omit both fields (or use
   the schema's defaults) if you want the full-fidelity default cadence instead.
 
@@ -81,6 +81,16 @@ Keep polling — by the final assessment near the end of the run, the fault
 should have escalated enough to match. In a verified live run against
 `reactor_a_feed_loss`, the final assessment looked like this (abbreviated):
 
+**Also expect this:** Gemini's real free-tier quota is only 20 requests/day
+per model (verified live, not from docs) — if you've already run this guide
+(or the test suite, or anything else calling the LLM router) a few times
+today, Gemini may already be exhausted and every call falls to Groq, or —
+if Groq is *also* momentarily rate-limited from the same burst — you may
+see `"reasoning_unavailable": true` even on this first happy-path run. This
+is the two-tier fallback correctly doing its job under real rate limits,
+not a bug; just re-run once quotas clear (Groq's daily quota is far more
+generous, so this is usually brief).
+
 ```json
 {
   "risk_assessment": {
@@ -104,7 +114,7 @@ should have escalated enough to match. In a verified live run against
 ```
 
 Note `llm_tier_used: "groq"` throughout — this is the real fallback tier active
-right now; yours may say `"huggingface"` instead depending on quota/availability
+right now; yours may say `"gemini"` instead depending on quota/availability
 at the time you run this. **Copy the `approval_id`** from
 `emergency_recommendation.approval_id` — you need it for Part 2. (If
 `"triggered": false` and `approval_id` is `null`, risk never crossed the
@@ -231,7 +241,7 @@ seeing the real behavior when both LLM tiers are actually unreachable.
 2. Open `.env` and **blank both values** (keep the variable names, empty the
    values):
    ```
-   HF_API_TOKEN=
+   GEMINI_API_KEY=
    GROQ_API_KEY=
    ```
 3. **Restart** the server: `uvicorn backend.api.main:app --reload`

@@ -37,9 +37,9 @@ def _build_test_run_manager(tmp_path, risk_score: float) -> RunManager:
         ('"approved"', json.dumps({"approved": True, "cited_sop_chunk_ids": ["reactor_high_pressure_response::part0"], "notes": "ok"})),
         ('"recommended_interventions"', json.dumps({"recommended_interventions": ["Reduce reactor feed rate"], "reasoning": "test"})),
     ]
-    fake_provider = ScriptedLLMProvider(LLMTier.HUGGING_FACE, rules, default_content="Plain narrative explanation for the operator.")
-    llm_router = LLMRouter(hf_provider=fake_provider, groq_provider=fake_provider, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    fake_provider = ScriptedLLMProvider(LLMTier.GEMINI, rules, default_content="Plain narrative explanation for the operator.")
+    llm_router = LLMRouter(gemini_provider=fake_provider, groq_provider=fake_provider, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
     })
 

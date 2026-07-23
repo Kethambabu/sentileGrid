@@ -8,10 +8,10 @@ def _assessment(risk_score, expected_risk_level, is_novel=False):
     outcome = RetrievalOutcome(phase=RetrievalPhase.FAST_AND_SLOW, is_novel_condition=is_novel, confidence=ConfidenceLevel.HIGH, matches=[])
     risk = RiskAssessment(
         risk_score=risk_score, is_novel_condition=is_novel, confidence="high", contributing_factors=[],
-        recommended_action="x", cited_chunk_ids=[], reasoning="y", llm_tier_used="huggingface", latency_ms=1.0,
+        recommended_action="x", cited_chunk_ids=[], reasoning="y", llm_tier_used="gemini", latency_ms=1.0,
     )
-    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="huggingface", latency_ms=1.0)
-    explanation = ExplanationResult(narrative="x", cited_chunk_ids=[], llm_tier_used="huggingface", latency_ms=1.0)
+    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="gemini", latency_ms=1.0)
+    explanation = ExplanationResult(narrative="x", cited_chunk_ids=[], llm_tier_used="gemini", latency_ms=1.0)
     return HoldoutAssessment(
         scenario_name="test", seed=1, record_index=10, total_records=100, t_hours=0.5, expected_incident_id="test",
         expected_risk_level=expected_risk_level, retrieval_outcome=outcome, risk_assessment=risk,
@@ -47,10 +47,10 @@ def test_baseline_checkpoint_with_no_authored_stage_expects_low():
     outcome = RetrievalOutcome(phase=RetrievalPhase.FAST_AND_SLOW, is_novel_condition=False, confidence=ConfidenceLevel.HIGH, matches=[])
     risk = RiskAssessment(
         risk_score=20.0, is_novel_condition=False, confidence="high", contributing_factors=[], recommended_action="x",
-        cited_chunk_ids=[], reasoning="y", llm_tier_used="huggingface", latency_ms=1.0,
+        cited_chunk_ids=[], reasoning="y", llm_tier_used="gemini", latency_ms=1.0,
     )
-    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="huggingface", latency_ms=1.0)
-    explanation = ExplanationResult(narrative="x", cited_chunk_ids=[], llm_tier_used="huggingface", latency_ms=1.0)
+    compliance = ComplianceResult(action_reviewed="x", approved=True, cited_sop_chunk_ids=[], notes="ok", llm_tier_used="gemini", latency_ms=1.0)
+    explanation = ExplanationResult(narrative="x", cited_chunk_ids=[], llm_tier_used="gemini", latency_ms=1.0)
     assessment = HoldoutAssessment(
         scenario_name="baseline", seed=1, record_index=10, total_records=100, t_hours=0.5, expected_incident_id=None,
         expected_risk_level=None, retrieval_outcome=outcome, risk_assessment=risk, compliance_result=compliance, explanation=explanation,

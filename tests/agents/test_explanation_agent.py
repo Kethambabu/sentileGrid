@@ -6,10 +6,10 @@ from tests.fakes import FakeLLMProvider
 
 
 def _router(content: str) -> LLMRouter:
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, content=content)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, content=content)
     groq = FakeLLMProvider(LLMTier.GROQ, content=content)
-    return LLMRouter(hf_provider=hf, groq_provider=groq, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    return LLMRouter(gemini_provider=gemini, groq_provider=groq, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.7},
     })
 
@@ -18,7 +18,7 @@ def _risk():
     return RiskAssessment(
         risk_score=62.5, is_novel_condition=False, confidence="high", contributing_factors=["falling pressure"],
         recommended_action="increase cooling", cited_chunk_ids=["incident_x::critical"], reasoning="matches precedent",
-        llm_tier_used="huggingface", latency_ms=10.0,
+        llm_tier_used="gemini", latency_ms=10.0,
     )
 
 
@@ -35,7 +35,7 @@ def test_explanation_uses_llm_narrative_verbatim():
     agent = ExplanationAgent(router=_router("Reactor pressure is falling in a pattern matching [chunk_id=\"incident_x::critical\"]."))
     result = agent.explain(_risk(), _outcome())
     assert "falling" in result.narrative
-    assert result.llm_tier_used == "huggingface"
+    assert result.llm_tier_used == "gemini"
 
 
 def test_cited_chunks_include_ones_mentioned_in_narrative():
@@ -60,10 +60,10 @@ def test_explanation_accepts_optional_compliance_result():
 def test_reasoning_unavailable_produces_safe_narrative():
     """CLAUDE.md §14: both LLM tiers down must produce a visible 'reasoning
     unavailable' narrative, never raise uncaught or hang."""
-    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    gemini = FakeLLMProvider(LLMTier.GEMINI, should_fail=True)
     groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
-    router = LLMRouter(hf_provider=hf, groq_provider=groq, config={
-        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+    router = LLMRouter(gemini_provider=gemini, groq_provider=groq, config={
+        "gemini": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
         "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.7},
     })
     agent = ExplanationAgent(router=router)

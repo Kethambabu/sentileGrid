@@ -8,6 +8,7 @@ pytest>=7.4
 
 # Phase 2: RAG pipeline (knowledge base seeding)
 sentence-transformers>=2.7
+huggingface_hub>=0.23  # used by sentence-transformers for embeddings only — Gemini/Groq use requests/groq SDK directly, not this
 chromadb>=0.5
 duckdb>=1.0
 rank-bm25>=0.2
@@ -15,7 +16,6 @@ pypdf>=4.0
 
 # Phase 4: agent layer + orchestration
 langgraph>=0.2
-huggingface_hub>=0.30  # needs provider= support for router.huggingface.co (see backend/config/llm.yaml)
 groq>=0.9
 
 # Phase 5: API + dashboard
