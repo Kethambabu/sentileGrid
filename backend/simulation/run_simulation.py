@@ -58,6 +58,7 @@ def main() -> None:
         idv_schedule=scenario.idv_schedule,
         noise_enabled=scenario.noise_enabled,
         random_seed=scenario.random_seed,
+        synthetic_sensor_rules=scenario.synthetic_sensor_rules,
     )
 
     logger.info("Running scenario '%s' for %.2f hours", scenario.name, duration_hours)

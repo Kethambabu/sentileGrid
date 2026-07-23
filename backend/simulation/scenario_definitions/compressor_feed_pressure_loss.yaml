@@ -13,4 +13,7 @@ idv_schedule:
     start_hour: 0.5
 noise_enabled: true
 random_seed: 1004
+# Checked against this scenario's own seed run: reactor pressure trends DOWN
+# after the pressure loss, not up, so the methane/pressure-rise rule has no
+# real signal to key off here — left at defaults rather than forced.
 synthetic_sensor_rules: {}

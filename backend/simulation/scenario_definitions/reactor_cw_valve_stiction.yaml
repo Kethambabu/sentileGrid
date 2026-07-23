@@ -11,4 +11,15 @@ idv_schedule:
     start_hour: 0.5
 noise_enabled: true
 random_seed: 1002
-synthetic_sensor_rules: {}
+synthetic_sensor_rules:
+  # Calibrated against this scenario's own real seed run: reactor_cw_flow_
+  # valve_pct's tick-to-tick delta stddev is ~0.31 pre-fault (normal
+  # control-loop noise) vs. ~14.5 post-fault (the valve visibly lurching/
+  # sticking-then-releasing) — a ~47x jump. Coefficients below give ~0.9
+  # mm/s vibration pre-fault vs. ~5.1 mm/s during stiction, and ~11% total
+  # valve-health wear over the scenario's 16 hours — a visible-but-plausible
+  # signal, not guessed.
+  vibration_watch_valves: [reactor_cw_flow_valve_pct]
+  vibration_mm_s_per_pct_std: 0.3
+  valve_wear_baseline_pct_per_hour: 0.01
+  valve_wear_pct_per_hour_per_pct_std: 0.05

@@ -135,6 +135,35 @@ class IDVEventConfig(BaseModel):
     end_hour: float | None = None
 
 
+class SyntheticSensorReading(BaseModel):
+    """CLAUDE.md §6b: synthetic proxies for failure modes native TEP doesn't
+    simulate, calculated from real TEP variables + per-scenario rules — see
+    synthetic_sensors.py. `is_stub` is False once a real rule-driven value is
+    computed; kept as a field (rather than removed) so any caller that reads
+    an older cached/committed record can still tell stub data from real."""
+
+    methane_ppm: float
+    vibration_mm_s: float
+    valve_health_pct: float = Field(..., ge=0, le=100)
+    is_stub: bool = True
+
+
+class SyntheticSensorRules(BaseModel):
+    """CLAUDE.md §6b: per-scenario coefficients driving the synthetic sensor
+    layer. Deliberately not hardcoded in synthetic_sensors.py — "which fault
+    scenarios trigger this and by how much" is scenario-specific and lives in
+    backend/simulation/scenario_definitions/*.yaml. All-zero defaults mean
+    "no effect", so a scenario that omits this block stays at the flat
+    baseline (e.g. the no-fault `baseline` scenario)."""
+
+    methane_ppm_per_kpa_per_hour: float = Field(0.0, description="methane_ppm increase per (kPa/hour) of reactor pressure rise above the baseline-rise floor")
+    methane_pressure_rise_baseline_kpa_per_hour: float = Field(0.0, description="normal/expected reactor pressure rise rate — only the EXCESS above this drives methane up")
+    vibration_watch_valves: list[str] = Field(default_factory=list, description="XMV field names whose tick-to-tick erraticness drives vibration_mm_s and valve wear")
+    vibration_mm_s_per_pct_std: float = Field(0.0, description="vibration_mm_s increase per 1 percentage-point of rolling stddev in a watched valve's position deltas")
+    valve_wear_baseline_pct_per_hour: float = Field(0.0, ge=0, description="valve_health_pct decrease per hour even at rest — always non-negative, since wear only ever subtracts")
+    valve_wear_pct_per_hour_per_pct_std: float = Field(0.0, ge=0, description="additional valve_health_pct decrease per hour per 1 percentage-point of the same erraticness signal used for vibration")
+
+
 class SimulationRunConfig(BaseModel):
     scenario_name: str
     duration_hours: float = Field(..., gt=0, le=200)
@@ -143,17 +172,7 @@ class SimulationRunConfig(BaseModel):
     idv_schedule: list[IDVEventConfig] = Field(default_factory=list)
     noise_enabled: bool = True
     random_seed: float | None = None
-
-
-class SyntheticSensorReading(BaseModel):
-    """CLAUDE.md §6b: synthetic proxies for failure modes native TEP doesn't
-    simulate. Phase 1 always returns the documented baseline (is_stub=True) —
-    scenario-driven calculation is Phase 2 scope; see synthetic_sensors.py."""
-
-    methane_ppm: float
-    vibration_mm_s: float
-    valve_health_pct: float = Field(..., ge=0, le=100)
-    is_stub: bool = True
+    synthetic_sensor_rules: SyntheticSensorRules = Field(default_factory=SyntheticSensorRules)
 
 
 class SimulationRecord(BaseModel):

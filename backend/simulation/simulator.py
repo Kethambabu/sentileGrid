@@ -35,7 +35,7 @@ class TEPSimulator:
         seed = config.random_seed if config.random_seed is not None else c.DEFAULT_RNG_SEED
         self.process = TEProcess(rng_seed=seed)
         self.controller = BaseCaseController()
-        self.synthetic = SyntheticSensorLayer()
+        self.synthetic = SyntheticSensorLayer(rules=config.synthetic_sensor_rules)
 
     def run(self) -> SimulationResult:
         run_id = str(uuid.uuid4())
