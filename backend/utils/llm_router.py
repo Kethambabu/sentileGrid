@@ -81,11 +81,32 @@ class LLMProvider(ABC):
 
 
 class HuggingFaceProvider(LLMProvider):
+    """Hugging Face's old free "Serverless Inference API"
+    (api-inference.huggingface.co) was retired — it now 404/DNS-fails
+    entirely. The replacement (router.huggingface.co, the "Inference
+    Providers" router) is a metered, pay-as-you-go service: free accounts
+    get $0.10/month credit, then billing kicks in. This is a real change to
+    CLAUDE.md §2's "zero paid resources" constraint that we cannot code our
+    way around — flagged explicitly rather than silently absorbed.
+
+    `provider` MUST be pinned to a specific backend (never "auto") and MUST
+    NOT be a provider Groq also resolves to — otherwise "tier 1 fails, fall
+    back to tier 2 Groq" can silently mean "call Groq twice," which is not
+    real redundancy (CLAUDE.md §5's exact concern about Inference Providers
+    routing). Verified 2026-07-23: the configured model
+    (Qwen/Qwen2.5-72B-Instruct) is served by featherless-ai/novita/deepinfra
+    — none of which are Groq — so pinning to one of those is safe. The HF
+    account token also needs the "Make calls to Inference Providers"
+    permission explicitly granted (not on by default for fine-grained
+    tokens) — without it every call 403s regardless of model/provider choice.
+    """
+
     tier = LLMTier.HUGGING_FACE
 
-    def __init__(self, model: str, timeout_seconds: float, api_token: str | None = None) -> None:
+    def __init__(self, model: str, timeout_seconds: float, provider: str = "featherless-ai", api_token: str | None = None) -> None:
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.provider = provider
         self.api_token = api_token if api_token is not None else os.environ.get("HF_API_TOKEN")
 
     def complete(self, request: LLMRequest) -> LLMResponse:
@@ -93,7 +114,7 @@ class HuggingFaceProvider(LLMProvider):
             raise RuntimeError("HF_API_TOKEN is not set")
         from huggingface_hub import InferenceClient
 
-        client = InferenceClient(model=self.model, token=self.api_token, timeout=self.timeout_seconds)
+        client = InferenceClient(model=self.model, provider=self.provider, token=self.api_token, timeout=self.timeout_seconds)
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
         start = time.monotonic()
         result = client.chat_completion(messages=messages, temperature=request.temperature, max_tokens=request.max_tokens)
@@ -158,7 +179,8 @@ class LLMRouter:
     ) -> None:
         self.config = config or load_llm_config()
         self.hf_provider = hf_provider or HuggingFaceProvider(
-            model=self.config["huggingface"]["model"], timeout_seconds=self.config["huggingface"]["timeout_seconds"]
+            model=self.config["huggingface"]["model"], timeout_seconds=self.config["huggingface"]["timeout_seconds"],
+            provider=self.config["huggingface"].get("provider", "featherless-ai"),
         )
         self.groq_provider = groq_provider or GroqProvider(
             model=self.config["groq"]["model"], timeout_seconds=self.config["groq"]["timeout_seconds"]

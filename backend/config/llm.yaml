@@ -1,11 +1,30 @@
-# CLAUDE.md §5/§5a: two-tier fallback, in order — Hugging Face Serverless
-# Inference API (primary), then Groq (fallback). No third/offline tier.
-# Model availability on free-tier serverless endpoints shifts over time;
-# these are working defaults as of this project's build date, not
-# permanent — update here, not by hardcoding a model name into an agent.
-
+# CLAUDE.md §5/§5a: two-tier fallback, in order — Hugging Face (primary),
+# then Groq (fallback). No third/offline tier. Model availability on
+# free-tier endpoints shifts over time; these are working defaults as of
+# this project's build date, not permanent — update here, not by
+# hardcoding a model name into an agent.
+#
+# KNOWN CHANGE (verified 2026-07-23): the old free
+# api-inference.huggingface.co "Serverless Inference API" is gone —
+# DNS/404s entirely. Its replacement, router.huggingface.co ("Inference
+# Providers"), is metered/pay-as-you-go: free accounts get $0.10/month
+# credit, then real billing. This is a genuine, external change to
+# CLAUDE.md §2's zero-paid-resources constraint at any real usage volume —
+# not something fixable in code. Documented rather than hidden, per this
+# project's own precedent (see retrieval.yaml, backend/evaluation/README.md).
+#
+# `provider` MUST be pinned explicitly (never "auto") to a backend that is
+# NOT one Groq also resolves to, or "tier 1 fails -> fall back to tier 2
+# Groq" can silently mean calling Groq twice — not real redundancy
+# (exactly the risk CLAUDE.md §5 warns about for Inference Providers
+# routing). featherless-ai/novita/deepinfra all currently serve the model
+# below and none are Groq. Also: the HF token needs the "Make calls to
+# Inference Providers" permission explicitly granted in its settings —
+# fine-grained tokens don't have it by default, and every call 403s
+# without it regardless of model/provider choice.
 huggingface:
   model: "Qwen/Qwen2.5-72B-Instruct"
+  provider: "featherless-ai"
   timeout_seconds: 20
 
 groq:

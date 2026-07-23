@@ -15,7 +15,7 @@ pypdf>=4.0
 
 # Phase 4: agent layer + orchestration
 langgraph>=0.2
-huggingface_hub>=0.24
+huggingface_hub>=0.30  # needs provider= support for router.huggingface.co (see backend/config/llm.yaml)
 groq>=0.9
 
 # Phase 5: API + dashboard
