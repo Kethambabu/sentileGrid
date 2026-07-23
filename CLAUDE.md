@@ -347,3 +347,11 @@ pytest tests/agents/
 ```
 
 **Scenario library** (`backend/simulation/scenario_definitions/*.yaml`, 5 fault scenarios + baseline): `reactor_a_feed_loss`, `reactor_cw_valve_stiction`, `reactor_kinetics_drift`, `compressor_feed_pressure_loss`, `separator_cooling_duty_loss`. Adding a new one: write the scenario YAML, run it, rename the output to `data/simulation_runs/<name>_seed.csv`, author `backend/knowledge/incidents/<name>.yaml` against the real values in that CSV, then re-seed. See `backend/evaluation/README.md` for current measured retrieval/groundedness/risk-accuracy numbers and known limitations.
+
+---
+
+## 16. Implementation Notes Not Covered Above
+
+- **`utils/llm_router.py` deliberately does not import `backend.database`.** It sits below the agent/orchestrator layer (Section 3) and must not depend upward on it. Callers that want a response written to the audit trail pass an `on_response` callback into `LLMRouter`; the router itself has no opinion on whether or how that happens. Keep this direction if you touch the router — audit-logging belongs in the agent/orchestrator node, not inside `llm_router.py`.
+- **Shared LLM test doubles live in `tests/fakes.py`**, not mirrored under any single `backend/` subpackage — the one deliberate exception to the "tests/ mirrors backend/ 1:1" rule (Section 12), because `FakeLLMProvider` and `ScriptedLLMProvider` are reused across `tests/agents/`, `tests/orchestrator/`, and `tests/utils/`. Use `ScriptedLLMProvider` (keyword-routed canned responses) when a single fake provider needs to stand in for multiple LLM-calling agents at once, e.g. testing the full graph in `tests/orchestrator/test_graph.py`.
+- **No linter/formatter is configured** (no ruff/flake8/black/pyproject.toml in the repo). Don't assume one or invent a lint command — `pytest tests/` is the only verification command that currently exists alongside manual review.
