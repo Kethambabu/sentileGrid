@@ -28,6 +28,7 @@ class RiskAssessment(BaseModel):
     llm_tier_used: str
     latency_ms: float
     parse_error: bool = False
+    reasoning_unavailable: bool = Field(False, description="True when both LLM tiers failed (CLAUDE.md §14) — distinct from parse_error, which means a tier responded but the content was unparseable")
 
 
 class ComplianceResult(BaseModel):
@@ -38,6 +39,7 @@ class ComplianceResult(BaseModel):
     llm_tier_used: str
     latency_ms: float
     parse_error: bool = False
+    reasoning_unavailable: bool = False
 
 
 class ExplanationResult(BaseModel):
@@ -45,6 +47,7 @@ class ExplanationResult(BaseModel):
     cited_chunk_ids: list[str] = Field(default_factory=list)
     llm_tier_used: str
     latency_ms: float
+    reasoning_unavailable: bool = False
 
 
 class EmergencyRecommendation(BaseModel):
@@ -54,3 +57,4 @@ class EmergencyRecommendation(BaseModel):
     approval_id: str | None = None
     llm_tier_used: str | None = None
     latency_ms: float | None = None
+    reasoning_unavailable: bool = False

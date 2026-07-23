@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from ..rag.prompt_builder import build_prompt
 from ..rag.retriever import RetrievalOutcome
-from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter
+from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter, ReasoningServiceUnavailableError
 from .models import ComplianceResult, ExplanationResult, RiskAssessment
 
 TASK_INSTRUCTION = """You are the Explanation Agent for SentinelGrid, an industrial safety monitoring system. Write a short, plain-language narrative (3-6 sentences) for a plant operator explaining the current risk assessment below, citing the reference_data chunk_ids that support each claim inline like [chunk_id="..."]. Be concrete about WHICH readings are involved and HOW they relate — this system's whole point is that danger lives in the combination of readings, not any one of them. Do not invent facts not present in the risk assessment, compliance result, or reference_data below. Respond with plain text only, not JSON."""
@@ -34,9 +34,18 @@ class ExplanationAgent:
         live_context = _format_context(risk, compliance)
         prompt = build_prompt(TASK_INSTRUCTION, live_context, retrieval_outcome)
 
-        response = self.router.complete(
-            LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.7, max_tokens=500, json_mode=False)
-        )
+        try:
+            response = self.router.complete(
+                LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.7, max_tokens=500, json_mode=False)
+            )
+        except ReasoningServiceUnavailableError:
+            return ExplanationResult(
+                narrative="Reasoning service is currently unavailable — both LLM tiers failed. Manual review required.",
+                cited_chunk_ids=risk.cited_chunk_ids,
+                llm_tier_used="unavailable",
+                latency_ms=0.0,
+                reasoning_unavailable=True,
+            )
 
         cited = [m.chunk_id for m in retrieval_outcome.matches if m.chunk_id in response.content] or risk.cited_chunk_ids
 

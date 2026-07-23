@@ -55,3 +55,20 @@ def test_explanation_accepts_optional_compliance_result():
     agent = ExplanationAgent(router=_router("Narrative mentioning compliance."))
     result = agent.explain(_risk(), _outcome(), compliance=compliance)
     assert result.narrative
+
+
+def test_reasoning_unavailable_produces_safe_narrative():
+    """CLAUDE.md §14: both LLM tiers down must produce a visible 'reasoning
+    unavailable' narrative, never raise uncaught or hang."""
+    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
+    router = LLMRouter(hf_provider=hf, groq_provider=groq, config={
+        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+        "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.7},
+    })
+    agent = ExplanationAgent(router=router)
+    result = agent.explain(_risk(), _outcome())
+
+    assert result.reasoning_unavailable is True
+    assert result.llm_tier_used == "unavailable"
+    assert result.cited_chunk_ids == _risk().cited_chunk_ids

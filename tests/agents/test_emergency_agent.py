@@ -18,6 +18,15 @@ def _router(content: str) -> LLMRouter:
     })
 
 
+def _failing_router() -> LLMRouter:
+    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
+    return LLMRouter(hf_provider=hf, groq_provider=groq, config={
+        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+        "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.3},
+    })
+
+
 def _outcome():
     return RetrievalOutcome(phase=RetrievalPhase.FAST_AND_SLOW, is_novel_condition=False, confidence=ConfidenceLevel.HIGH, matches=[])
 
@@ -71,6 +80,25 @@ def test_unparseable_response_still_creates_pending_approval_not_a_crash(tmp_pat
 
     result = agent.maybe_escalate(_risk(95.0), _outcome(), run_id="run-1")
     assert result.triggered is True
+    assert result.approval_id is not None
+    assert approval_service.get(result.approval_id).status == ApprovalStatus.PENDING
+    queue.stop()
+
+
+def test_reasoning_unavailable_above_threshold_still_creates_pending_approval(tmp_path):
+    """The single most consequential case in the whole safety layer: if risk
+    already crossed the emergency threshold and THEN both LLM tiers fail,
+    a pending approval record must still exist — CLAUDE.md §14's "both free
+    tiers fail" case must never mean "no record of a detected emergency"."""
+    queue = AuditWriteQueue(db_path=tmp_path / "audit.sqlite3")
+    approval_service = ApprovalService(audit_queue=queue, db_path=tmp_path / "approvals.sqlite3")
+    agent = EmergencyAgent(router=_failing_router(), approval_service=approval_service, risk_threshold=80.0)
+
+    result = agent.maybe_escalate(_risk(92.0), _outcome(), run_id="run-1")
+
+    assert result.triggered is True
+    assert result.reasoning_unavailable is True
+    assert result.llm_tier_used == "unavailable"
     assert result.approval_id is not None
     assert approval_service.get(result.approval_id).status == ApprovalStatus.PENDING
     queue.stop()

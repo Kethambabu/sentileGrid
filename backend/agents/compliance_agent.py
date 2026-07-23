@@ -15,7 +15,7 @@ from ..rag.bm25_index import BM25Index
 from ..rag.embedder import Embedder
 from ..rag.hybrid_retrieval import hybrid_query
 from ..rag.prompt_builder import REFERENCE_DATA_PREAMBLE, build_reference_data_block_from_chunks, sanitize
-from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter
+from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter, ReasoningServiceUnavailableError
 from .models import ComplianceResult
 
 TASK_INSTRUCTION = """You are the Compliance Agent for SentinelGrid, an industrial safety monitoring system. You are given a proposed first-line action and relevant SOP excerpts (in the reference_data block). Determine whether the action is consistent with documented procedure.
@@ -53,9 +53,20 @@ class ComplianceAgent:
         prompt = "\n".join(
             [TASK_INSTRUCTION, "", f"Proposed action: {sanitize(recommended_action)}", "", REFERENCE_DATA_PREAMBLE, block]
         )
-        response = self.router.complete(
-            LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.1, max_tokens=400, json_mode=True)
-        )
+        try:
+            response = self.router.complete(
+                LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.1, max_tokens=400, json_mode=True)
+            )
+        except ReasoningServiceUnavailableError:
+            return ComplianceResult(
+                action_reviewed=recommended_action,
+                approved=False,
+                cited_sop_chunk_ids=[],
+                notes="Reasoning service unavailable — both LLM tiers failed; action not approved pending manual review.",
+                llm_tier_used="unavailable",
+                latency_ms=0.0,
+                reasoning_unavailable=True,
+            )
 
         parse_error = False
         try:

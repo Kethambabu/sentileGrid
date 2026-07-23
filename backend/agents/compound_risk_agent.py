@@ -17,7 +17,7 @@ import json
 
 from ..rag.prompt_builder import build_prompt
 from ..rag.retriever import ConfidenceLevel, RetrievalOutcome
-from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter
+from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter, ReasoningServiceUnavailableError
 from .models import RiskAssessment, TrendFeature
 
 TASK_INSTRUCTION = """You are the Compound-Risk Agent for SentinelGrid, an industrial safety monitoring system for a chemical plant. Your job is to detect compound risk: situations where individual sensor readings look normal in isolation but their COMBINATION and TREND across time signal danger. You are given the current live trend features (rate of change per channel, below) and retrieved historical precedent (in the reference_data block).
@@ -51,9 +51,25 @@ class CompoundRiskAgent:
         live_context = format_trend_context(trend_features)
         prompt = build_prompt(TASK_INSTRUCTION, live_context, retrieval_outcome)
 
-        response = self.router.complete(
-            LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.1, max_tokens=600, json_mode=True)
-        )
+        is_novel = retrieval_outcome.is_novel_condition or retrieval_outcome.confidence == ConfidenceLevel.NOVEL
+
+        try:
+            response = self.router.complete(
+                LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.1, max_tokens=600, json_mode=True)
+            )
+        except ReasoningServiceUnavailableError:
+            return RiskAssessment(
+                risk_score=None,
+                is_novel_condition=is_novel,
+                confidence=retrieval_outcome.confidence.value,
+                contributing_factors=["Reasoning service unavailable — both LLM tiers failed"],
+                recommended_action="Escalate for manual review — reasoning service unavailable.",
+                cited_chunk_ids=[],
+                reasoning="Both Hugging Face and Groq LLM tiers failed; refusing to guess a risk score.",
+                llm_tier_used="unavailable",
+                latency_ms=0.0,
+                reasoning_unavailable=True,
+            )
 
         parse_error = False
         try:
@@ -71,7 +87,6 @@ class CompoundRiskAgent:
             cited_chunk_ids = []
             reasoning = "The reasoning-tier response was not valid JSON; refusing to guess a risk score."
 
-        is_novel = retrieval_outcome.is_novel_condition or retrieval_outcome.confidence == ConfidenceLevel.NOVEL
         if is_novel:
             risk_score = None  # code-level enforcement, independent of what the LLM returned (CLAUDE.md §9.2)
 

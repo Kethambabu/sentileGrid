@@ -36,6 +36,15 @@ def _fake_router(content: str) -> LLMRouter:
     })
 
 
+def _failing_router() -> LLMRouter:
+    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
+    return LLMRouter(hf_provider=hf, groq_provider=groq, config={
+        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+        "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
+    })
+
+
 def _build_test_graph(tmp_path, risk_score: float):
     persist_dir = tmp_path / "chroma"
     seed(reset=True, persist_directory=persist_dir)
@@ -121,4 +130,85 @@ def test_sensor_agent_output_flows_through_to_retrieval(tmp_path):
 
     final_state = graph.invoke(initial_state)
     assert len(final_state["sensor_output"].records) == len(records)
+    audit_queue.stop()
+
+
+def test_full_pipeline_survives_compound_risk_reasoning_unavailable(tmp_path):
+    """CLAUDE.md §14's 'both free tiers down' case must degrade to a visible
+    state, never raise uncaught out of graph.invoke() and never guess a
+    risk score. Previously untested — this is the gap the audit flagged."""
+    persist_dir = tmp_path / "chroma"
+    seed(reset=True, persist_directory=persist_dir)
+    client = get_client(persist_directory=persist_dir)
+
+    audit_queue = AuditWriteQueue(db_path=tmp_path / "audit.sqlite3")
+    approval_service = ApprovalService(audit_queue=audit_queue, db_path=tmp_path / "approvals.sqlite3")
+    compliance_content = json.dumps({"approved": True, "cited_sop_chunk_ids": ["reactor_high_pressure_response::part0"], "notes": "Matches SOP-REACT-001."})
+
+    graph = build_graph(
+        sensor_agent=SensorAgent(),
+        trend_agent=TrendAgent(),
+        retrieval_agent=RetrievalAgent(retriever=LiveRetriever(client=client)),
+        compound_risk_agent=CompoundRiskAgent(router=_failing_router()),
+        compliance_agent=ComplianceAgent(router=_fake_router(compliance_content), client=client),
+        explanation_agent=ExplanationAgent(router=_fake_router("Manual narrative — reasoning unavailable upstream.")),
+        emergency_agent=EmergencyAgent(router=_fake_router(json.dumps({"recommended_interventions": [], "reasoning": "n/a"})), approval_service=approval_service, risk_threshold=80.0),
+        audit_queue=audit_queue,
+    )
+    initial_state = SentinelGridState(run_id="run-reasoning-down", records=_live_records())
+
+    final_state = graph.invoke(initial_state)
+
+    risk = final_state["risk_assessment"]
+    assert risk.risk_score is None
+    assert risk.reasoning_unavailable is True
+    assert final_state["emergency_recommendation"].triggered is False  # no known-high score to escalate on
+    assert any("compound_risk_agent" in e for e in final_state["errors"])
+
+    audit_queue.stop()
+
+
+def test_full_pipeline_emergency_reasoning_unavailable_still_creates_approval(tmp_path):
+    """The highest-consequence case: risk already crossed the emergency
+    threshold via a real (fake-but-successful) compound-risk call, and only
+    the Emergency Agent's own LLM call fails — an approval record must
+    still exist, since risk_score was already known to be high."""
+    persist_dir = tmp_path / "chroma"
+    seed(reset=True, persist_directory=persist_dir)
+    client = get_client(persist_directory=persist_dir)
+
+    audit_queue = AuditWriteQueue(db_path=tmp_path / "audit.sqlite3")
+    approval_service = ApprovalService(audit_queue=audit_queue, db_path=tmp_path / "approvals.sqlite3")
+
+    risk_content = json.dumps({
+        "risk_score": 92.0, "contributing_factors": ["reactor pressure trending toward trip threshold"],
+        "recommended_action": "Increase reactor cooling water flow toward its upper operating range",
+        "cited_chunk_ids": ["reactor_a_feed_loss::critical"], "reasoning": "matches feed-loss precedent",
+    })
+    compliance_content = json.dumps({"approved": True, "cited_sop_chunk_ids": ["reactor_high_pressure_response::part0"], "notes": "Matches SOP-REACT-001."})
+
+    graph = build_graph(
+        sensor_agent=SensorAgent(),
+        trend_agent=TrendAgent(),
+        retrieval_agent=RetrievalAgent(retriever=LiveRetriever(client=client)),
+        compound_risk_agent=CompoundRiskAgent(router=_fake_router(risk_content)),
+        compliance_agent=ComplianceAgent(router=_fake_router(compliance_content), client=client),
+        explanation_agent=ExplanationAgent(router=_fake_router("Reactor pressure is climbing toward its trip threshold.")),
+        emergency_agent=EmergencyAgent(router=_failing_router(), approval_service=approval_service, risk_threshold=80.0),
+        audit_queue=audit_queue,
+    )
+    initial_state = SentinelGridState(run_id="run-emergency-down", records=_live_records())
+
+    final_state = graph.invoke(initial_state)
+
+    emergency = final_state["emergency_recommendation"]
+    assert emergency.triggered is True
+    assert emergency.reasoning_unavailable is True
+    assert emergency.approval_id is not None
+
+    record = approval_service.get(emergency.approval_id)
+    assert record.status == ApprovalStatus.PENDING  # never auto-approved, even under LLM outage
+
+    assert any("emergency_agent" in e for e in final_state["errors"])
+
     audit_queue.stop()

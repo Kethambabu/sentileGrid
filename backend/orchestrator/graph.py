@@ -51,6 +51,12 @@ def build_graph(
         cleaned = state.sensor_output.records if state.sensor_output else state.records
         return {"retrieval_outcome": retrieval_agent.retrieve(cleaned, equipment_zone=state.equipment_zone)}
 
+    def _with_error(state: SentinelGridState, reasoning_unavailable: bool, agent_name: str) -> list[str]:
+        errors = list(state.errors)
+        if reasoning_unavailable:
+            errors.append(f"{agent_name}: reasoning service unavailable (both LLM tiers failed)")
+        return errors
+
     def compound_risk_node(state: SentinelGridState) -> dict:
         risk = compound_risk_agent.assess(state.trend_output.features, state.retrieval_outcome, state.run_id)
         audit_queue.submit(
@@ -60,10 +66,11 @@ def build_graph(
                     "risk_score": risk.risk_score, "is_novel_condition": risk.is_novel_condition, "confidence": risk.confidence,
                     "contributing_factors": risk.contributing_factors, "recommended_action": risk.recommended_action,
                     "cited_chunk_ids": risk.cited_chunk_ids, "llm_tier_used": risk.llm_tier_used, "parse_error": risk.parse_error,
+                    "reasoning_unavailable": risk.reasoning_unavailable,
                 },
             )
         )
-        return {"risk_assessment": risk}
+        return {"risk_assessment": risk, "errors": _with_error(state, risk.reasoning_unavailable, "compound_risk_agent")}
 
     def compliance_node(state: SentinelGridState) -> dict:
         result = compliance_agent.review(state.risk_assessment.recommended_action)
@@ -73,20 +80,24 @@ def build_graph(
                 payload={
                     "action_reviewed": result.action_reviewed, "approved": result.approved,
                     "cited_sop_chunk_ids": result.cited_sop_chunk_ids, "notes": result.notes, "llm_tier_used": result.llm_tier_used,
+                    "reasoning_unavailable": result.reasoning_unavailable,
                 },
             )
         )
-        return {"compliance_result": result}
+        return {"compliance_result": result, "errors": _with_error(state, result.reasoning_unavailable, "compliance_agent")}
 
     def explanation_node(state: SentinelGridState) -> dict:
         explanation = explanation_agent.explain(state.risk_assessment, state.retrieval_outcome, state.compliance_result)
         audit_queue.submit(
             AuditEntryInput(
                 event_type="explanation", agent_name="explanation_agent", run_id=state.run_id,
-                payload={"narrative": explanation.narrative, "cited_chunk_ids": explanation.cited_chunk_ids, "llm_tier_used": explanation.llm_tier_used},
+                payload={
+                    "narrative": explanation.narrative, "cited_chunk_ids": explanation.cited_chunk_ids,
+                    "llm_tier_used": explanation.llm_tier_used, "reasoning_unavailable": explanation.reasoning_unavailable,
+                },
             )
         )
-        return {"explanation": explanation}
+        return {"explanation": explanation, "errors": _with_error(state, explanation.reasoning_unavailable, "explanation_agent")}
 
     def emergency_node(state: SentinelGridState) -> dict:
         recommendation = emergency_agent.maybe_escalate(state.risk_assessment, state.retrieval_outcome, state.run_id)
@@ -97,10 +108,14 @@ def build_graph(
                     payload={
                         "recommended_interventions": recommendation.recommended_interventions,
                         "approval_id": recommendation.approval_id, "llm_tier_used": recommendation.llm_tier_used,
+                        "reasoning_unavailable": recommendation.reasoning_unavailable,
                     },
                 )
             )
-        return {"emergency_recommendation": recommendation}
+        return {
+            "emergency_recommendation": recommendation,
+            "errors": _with_error(state, recommendation.reasoning_unavailable, "emergency_agent"),
+        }
 
     graph = StateGraph(SentinelGridState)
     graph.add_node("sensor", sensor_node)

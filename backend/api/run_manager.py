@@ -167,6 +167,7 @@ class RunManager:
             config = SimulationRunConfig(
                 scenario_name=scenario.name, duration_hours=duration_hours or scenario.duration_hours,
                 idv_schedule=scenario.idv_schedule, noise_enabled=scenario.noise_enabled, random_seed=scenario.random_seed,
+                synthetic_sensor_rules=scenario.synthetic_sensor_rules,
             )
             result = TEPSimulator(config).run()
             with state.lock:
@@ -239,6 +240,7 @@ class RunManager:
             "compliance_result": compliance.model_dump(),
             "explanation": explanation.model_dump(),
             "emergency_recommendation": emergency.model_dump(),
+            "errors": result.get("errors", []),
         }
         with state.lock:
             state.assessments.append(entry)

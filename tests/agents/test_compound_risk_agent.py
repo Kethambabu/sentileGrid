@@ -61,3 +61,20 @@ def test_llm_tier_used_is_recorded():
     agent = CompoundRiskAgent(router=_router(content))
     result = agent.assess(_trend_features(), _outcome(is_novel=False, confidence=ConfidenceLevel.MODERATE), run_id="run-1")
     assert result.llm_tier_used == "huggingface"
+
+
+def test_reasoning_unavailable_when_both_tiers_fail():
+    """CLAUDE.md §14: both LLM tiers down must produce a visible 'reasoning
+    unavailable' result, never guess a risk score and never raise uncaught."""
+    hf = FakeLLMProvider(LLMTier.HUGGING_FACE, should_fail=True)
+    groq = FakeLLMProvider(LLMTier.GROQ, should_fail=True)
+    router = LLMRouter(hf_provider=hf, groq_provider=groq, config={
+        "huggingface": {"model": "m", "timeout_seconds": 5}, "groq": {"model": "m", "timeout_seconds": 5},
+        "cache": {"ttl_seconds": 0}, "defaults": {"max_tokens": 500, "temperature": 0.1},
+    })
+    agent = CompoundRiskAgent(router=router)
+    result = agent.assess(_trend_features(), _outcome(is_novel=False, confidence=ConfidenceLevel.MODERATE), run_id="run-1")
+
+    assert result.risk_score is None
+    assert result.reasoning_unavailable is True
+    assert result.llm_tier_used == "unavailable"

@@ -17,7 +17,7 @@ import json
 from ..database.approvals import ApprovalService
 from ..rag.prompt_builder import build_prompt
 from ..rag.retriever import RetrievalOutcome
-from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter
+from ..utils.llm_router import LLMMessage, LLMRequest, LLMRouter, ReasoningServiceUnavailableError
 from .models import EmergencyRecommendation, RiskAssessment
 
 DEFAULT_RISK_THRESHOLD = 80.0
@@ -44,21 +44,37 @@ class EmergencyAgent:
         live_context = f"Risk score: {risk.risk_score}. Contributing factors: {', '.join(risk.contributing_factors)}."
         prompt = build_prompt(TASK_INSTRUCTION, live_context, retrieval_outcome)
 
-        response = self.router.complete(
-            LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.3, max_tokens=500, json_mode=True)
-        )
-
+        reasoning_unavailable = False
         try:
-            parsed = json.loads(response.content)
-            interventions = list(parsed.get("recommended_interventions", []))
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            interventions = ["Automated recommendation unavailable (unparseable response) — escalate to on-call operator for manual review."]
+            response = self.router.complete(
+                LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.3, max_tokens=500, json_mode=True)
+            )
+        except ReasoningServiceUnavailableError:
+            reasoning_unavailable = True
+            interventions = [
+                "Automated recommendation unavailable — reasoning service down (both LLM tiers failed). "
+                "Escalate to on-call operator for manual review immediately."
+            ]
+            tier_used = "unavailable"
+            latency_ms = None
+        else:
+            try:
+                parsed = json.loads(response.content)
+                interventions = list(parsed.get("recommended_interventions", []))
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                interventions = ["Automated recommendation unavailable (unparseable response) — escalate to on-call operator for manual review."]
+            tier_used = response.tier_used.value
+            latency_ms = response.latency_ms
 
+        # Approval creation must never be gated on the LLM call succeeding —
+        # risk already crossed the emergency threshold, so a pending record
+        # must exist for a human to see regardless of reasoning-tier outcome.
         approval = self.approval_service.create_pending(
             run_id=run_id, recommendation_summary="; ".join(interventions) if interventions else "(no interventions parsed)"
         )
 
         return EmergencyRecommendation(
             triggered=True, recommended_interventions=interventions, requires_approval=True,
-            approval_id=approval.approval_id, llm_tier_used=response.tier_used.value, latency_ms=response.latency_ms,
+            approval_id=approval.approval_id, llm_tier_used=tier_used, latency_ms=latency_ms,
+            reasoning_unavailable=reasoning_unavailable,
         )
