@@ -72,3 +72,4 @@ def test_reasoning_unavailable_produces_safe_narrative():
     assert result.reasoning_unavailable is True
     assert result.llm_tier_used == "unavailable"
     assert result.cited_chunk_ids == _risk().cited_chunk_ids
+    assert result.error_detail is not None and "fake provider configured to fail" in result.error_detail

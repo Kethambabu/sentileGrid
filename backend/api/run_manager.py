@@ -223,11 +223,25 @@ class RunManager:
         emergency = result["emergency_recommendation"]
         retrieval = result["retrieval_outcome"]
 
+        # Real per-agent error text (e.g. the actual Gemini/Groq quota/auth/network
+        # failure), only included when at least one agent's reasoning was
+        # unavailable — never silently discarded (see backend/utils/llm_router.py's
+        # ReasoningServiceUnavailableError, which already carries this detail).
+        llm_errors = {
+            agent_name: result_obj.error_detail
+            for agent_name, result_obj in (
+                ("compound_risk_agent", risk), ("compliance_agent", compliance),
+                ("explanation_agent", explanation), ("emergency_agent", emergency),
+            )
+            if result_obj.reasoning_unavailable
+        }
+
         log_event(
             "assessment_completed", run_id=run_id, record_index=len(records) - 1, wall_time_ms=wall_time_ms,
             risk_score=risk.risk_score, is_novel_condition=retrieval.is_novel_condition,
             compound_risk_latency_ms=risk.latency_ms, compliance_latency_ms=compliance.latency_ms,
             explanation_latency_ms=explanation.latency_ms, emergency_triggered=emergency.triggered,
+            **({"llm_errors": llm_errors} if llm_errors else {}),
         )
 
         entry = {

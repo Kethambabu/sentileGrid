@@ -99,6 +99,7 @@ def test_reasoning_unavailable_above_threshold_still_creates_pending_approval(tm
     assert result.triggered is True
     assert result.reasoning_unavailable is True
     assert result.llm_tier_used == "unavailable"
+    assert result.error_detail is not None and "fake provider configured to fail" in result.error_detail
     assert result.approval_id is not None
     assert approval_service.get(result.approval_id).status == ApprovalStatus.PENDING
     queue.stop()

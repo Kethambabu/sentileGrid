@@ -57,7 +57,7 @@ class CompoundRiskAgent:
             response = self.router.complete(
                 LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.1, max_tokens=600, json_mode=True)
             )
-        except ReasoningServiceUnavailableError:
+        except ReasoningServiceUnavailableError as exc:
             return RiskAssessment(
                 risk_score=None,
                 is_novel_condition=is_novel,
@@ -69,6 +69,7 @@ class CompoundRiskAgent:
                 llm_tier_used="unavailable",
                 latency_ms=0.0,
                 reasoning_unavailable=True,
+                error_detail=str(exc),
             )
 
         parse_error = False

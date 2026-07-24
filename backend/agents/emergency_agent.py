@@ -45,12 +45,14 @@ class EmergencyAgent:
         prompt = build_prompt(TASK_INSTRUCTION, live_context, retrieval_outcome)
 
         reasoning_unavailable = False
+        error_detail = None
         try:
             response = self.router.complete(
                 LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.3, max_tokens=500, json_mode=True)
             )
-        except ReasoningServiceUnavailableError:
+        except ReasoningServiceUnavailableError as exc:
             reasoning_unavailable = True
+            error_detail = str(exc)
             interventions = [
                 "Automated recommendation unavailable — reasoning service down (both LLM tiers failed). "
                 "Escalate to on-call operator for manual review immediately."
@@ -76,5 +78,5 @@ class EmergencyAgent:
         return EmergencyRecommendation(
             triggered=True, recommended_interventions=interventions, requires_approval=True,
             approval_id=approval.approval_id, llm_tier_used=tier_used, latency_ms=latency_ms,
-            reasoning_unavailable=reasoning_unavailable,
+            reasoning_unavailable=reasoning_unavailable, error_detail=error_detail,
         )

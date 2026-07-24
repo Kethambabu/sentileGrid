@@ -78,3 +78,4 @@ def test_reasoning_unavailable_defaults_to_not_approved(tmp_path):
     assert result.approved is False
     assert result.reasoning_unavailable is True
     assert result.llm_tier_used == "unavailable"
+    assert result.error_detail is not None and "fake provider configured to fail" in result.error_detail

@@ -163,7 +163,9 @@ def test_full_pipeline_survives_compound_risk_reasoning_unavailable(tmp_path):
     assert risk.risk_score is None
     assert risk.reasoning_unavailable is True
     assert final_state["emergency_recommendation"].triggered is False  # no known-high score to escalate on
-    assert any("compound_risk_agent" in e for e in final_state["errors"])
+    assert risk.error_detail is not None and "fake provider configured to fail" in risk.error_detail
+    matching_errors = [e for e in final_state["errors"] if "compound_risk_agent" in e]
+    assert matching_errors and "fake provider configured to fail" in matching_errors[0]
 
     audit_queue.stop()
 

@@ -57,7 +57,7 @@ class ComplianceAgent:
             response = self.router.complete(
                 LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.1, max_tokens=400, json_mode=True)
             )
-        except ReasoningServiceUnavailableError:
+        except ReasoningServiceUnavailableError as exc:
             return ComplianceResult(
                 action_reviewed=recommended_action,
                 approved=False,
@@ -66,6 +66,7 @@ class ComplianceAgent:
                 llm_tier_used="unavailable",
                 latency_ms=0.0,
                 reasoning_unavailable=True,
+                error_detail=str(exc),
             )
 
         parse_error = False

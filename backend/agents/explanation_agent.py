@@ -38,13 +38,14 @@ class ExplanationAgent:
             response = self.router.complete(
                 LLMRequest(messages=[LLMMessage(role="user", content=prompt)], temperature=0.7, max_tokens=500, json_mode=False)
             )
-        except ReasoningServiceUnavailableError:
+        except ReasoningServiceUnavailableError as exc:
             return ExplanationResult(
                 narrative="Reasoning service is currently unavailable — both LLM tiers failed. Manual review required.",
                 cited_chunk_ids=risk.cited_chunk_ids,
                 llm_tier_used="unavailable",
                 latency_ms=0.0,
                 reasoning_unavailable=True,
+                error_detail=str(exc),
             )
 
         cited = [m.chunk_id for m in retrieval_outcome.matches if m.chunk_id in response.content] or risk.cited_chunk_ids

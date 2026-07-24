@@ -29,6 +29,7 @@ class RiskAssessment(BaseModel):
     latency_ms: float
     parse_error: bool = False
     reasoning_unavailable: bool = Field(False, description="True when both LLM tiers failed (CLAUDE.md §14) — distinct from parse_error, which means a tier responded but the content was unparseable")
+    error_detail: str | None = Field(None, description="The real ReasoningServiceUnavailableError text (both providers' errors) when reasoning_unavailable is True — never discarded, so a quota/auth/network failure is distinguishable after the fact")
 
 
 class ComplianceResult(BaseModel):
@@ -40,6 +41,7 @@ class ComplianceResult(BaseModel):
     latency_ms: float
     parse_error: bool = False
     reasoning_unavailable: bool = False
+    error_detail: str | None = None
 
 
 class ExplanationResult(BaseModel):
@@ -48,6 +50,7 @@ class ExplanationResult(BaseModel):
     llm_tier_used: str
     latency_ms: float
     reasoning_unavailable: bool = False
+    error_detail: str | None = None
 
 
 class EmergencyRecommendation(BaseModel):
@@ -58,3 +61,4 @@ class EmergencyRecommendation(BaseModel):
     llm_tier_used: str | None = None
     latency_ms: float | None = None
     reasoning_unavailable: bool = False
+    error_detail: str | None = None
