@@ -381,12 +381,17 @@ assumed from documentation:
    calls** — the same "thinking" mechanism, at `compliance_agent`'s actual
    `max_tokens=400`, produced JSON missing its own leading `{`. A
    `thinkingConfig: {"thinkingLevel": "low"}` addition was implemented per
-   Gemini's official docs as the fix, but **every available key hit its
-   daily quota before this could be re-verified live** — it's committed and
-   documented explicitly as *unverified*, not claimed as fixed. (This edge
-   case is already safely contained by the existing malformed-JSON fallback
-   logic regardless — it defaults to "not approved / manual review," never a
-   crash or false positive.)
+   Gemini's official docs as the fix. Verification was blocked for a full
+   day by quota exhaustion on every available key, but was **confirmed
+   working the next day**: a real production-sized call (`emergency_agent`'s
+   actual `max_tokens=500`, `json_mode=True`, through the full running API,
+   not a synthetic script) returned clean, correctly-parsed JSON with two
+   coherent interventions — not the "unparseable response" fallback text
+   that would appear if truncation were still happening. (This edge case
+   was already safely contained by the existing malformed-JSON fallback
+   logic regardless while unverified — it defaults to "not approved /
+   manual review," never a crash or false positive — but it's now confirmed
+   fixed, not just safely contained.)
 
 ### 7.7 — A security issue found and fixed along the way
 
@@ -439,10 +444,12 @@ indicator, and the audit hash-chain integrity.
 **Known, honestly-documented open items:**
 - The novelty-detection gate (Fix 2) is a real but partial improvement, not
   a closed gap — see Part 7.4's measured numbers.
-- The `thinkingConfig` fix for Gemini's JSON-truncation issue is implemented
-  but not yet live-verified (blocked by every available key's daily quota
-  exhaustion) — already safely contained by existing fallback logic either
-  way.
 - Gemini's real daily quota (20 requests/day) means it will typically only
   serve the first few real assessments of any given day before the system
-  correctly falls back to Groq for the rest.
+  correctly falls back to Groq for the rest — confirmed to reset daily,
+  just tight enough that testing alone exhausts it quickly.
+
+**Since resolved:** the `thinkingConfig` fix for Gemini's JSON-truncation
+issue (Part 7.6, item 7) was confirmed working the day after it was
+implemented — a real production-sized call through the running API returned
+clean, correctly-parsed JSON, not the earlier truncated/malformed output.

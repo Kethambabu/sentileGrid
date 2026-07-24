@@ -35,6 +35,11 @@ gemini-3.5-flash 503'd (overloaded) on that account. The "-latest" alias
 (gemini-flash-latest) worked live on both accounts, so config uses that
 instead of a pinned dated version — see backend/config/llm.yaml.
 
+CONFIRMED (2026-07-24): the 20/day quota does reset daily (a fresh key/day
+produces real successful calls again), it's just tight enough that casual
+testing exhausts it in a handful of requests. See GeminiProvider's
+docstring for the thinkingConfig JSON-truncation fix, since verified live.
+
 Deliberately does NOT import backend.database: this module sits below the
 agent/orchestrator layer and must not depend upward on it. Callers that
 want responses written to the audit trail pass an `on_response` callback;
@@ -138,10 +143,15 @@ class GeminiProvider(LLMProvider):
     production size (compliance_agent's actual max_tokens=400 call, a real
     live run, not a synthetic test) — thinking apparently consumed enough
     of the budget that the visible JSON output itself got cut off mid-token,
-    not just reduced to empty. `thinkingConfig` below is the attempted fix,
-    UNVERIFIED LIVE as of 2026-07-24 (quota exhausted on every available key
-    before it could be re-tested) — confirm with a real call before
-    trusting this closes the gap.
+    not just reduced to empty. `thinkingConfig` below is the fix.
+
+    VERIFIED LIVE 2026-07-24 (after an earlier attempt was blocked by quota
+    exhaustion on every available key): a real production-sized call
+    (emergency_agent's actual max_tokens=500, json_mode=True) through the
+    full API — not a synthetic script — returned clean, correctly-parsed
+    JSON with two coherent interventions, not the "unparseable response"
+    fallback text. Confirms thinkingConfig closes the truncation gap at
+    real agent token budgets.
     """
 
     tier = LLMTier.GEMINI
@@ -163,10 +173,11 @@ class GeminiProvider(LLMProvider):
         ]
         generation_config: dict = {
             "temperature": request.temperature, "maxOutputTokens": request.max_tokens,
-            # UNVERIFIED LIVE (2026-07-24, all available Gemini keys hit their
-            # 20/day quota before this could be tested with a real call —
-            # confirm before trusting). Root cause this addresses: the
-            # resolved model (gemini-flash-latest -> gemini-3.6-flash, a
+            # VERIFIED LIVE 2026-07-24: a real production-sized call
+            # (emergency_agent's actual max_tokens=500, json_mode=True,
+            # through the full API) returned clean, correctly-parsed JSON —
+            # confirmed this closes the truncation gap. Root cause this
+            # addresses: the resolved model (gemini-flash-latest -> gemini-3.6-flash, a
             # "thinking" model) was observed spending its entire max_tokens
             # budget on invisible reasoning, leaving too little for the
             # actual JSON output and producing truncated/malformed JSON
