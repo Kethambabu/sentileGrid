@@ -61,3 +61,4 @@ data/approvals.sqlite3*
 # disk on free cloud hosting must reload from disk, not re-ingest live.
 # data/chroma_db/ (including its own chroma.sqlite3 metadata file) is
 # intentionally NOT excluded here.
+.superpowers/
