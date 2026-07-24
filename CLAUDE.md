@@ -55,24 +55,27 @@ sentinelgrid/
 │   ├── pages/                  # overview, timeline, agent trace views
 │   └── components/             # reusable widgets
 ├── backend/
-│   ├── api/                    # FastAPI routers — sensors, risk, actions, audit
+│   ├── api/                    # FastAPI routers — runs, scenarios, approvals, audit, llm_status
 │   ├── orchestrator/           # LangGraph graph + typed state schema
 │   ├── agents/                 # one file per agent, single responsibility each
-│   ├── rag/                    # loader, chunker, embedder, retriever, reranker
-│   ├── knowledge/               # static docs: SOPs, MSDS, OSHA extracts, near-misses
-│   ├── simulation/              # TEP integration (pyTEP), scenario definitions
-│   ├── database/                 # SQLite models, DuckDB views, vector store client
-│   ├── utils/                     # config loader, logging, schema validation
-│   ├── evaluation/                 # groundedness/precision/latency scripts, judge harness
+│   ├── rag/                    # loaders, chunker, embedder, hybrid retrieval, reranker, numeric similarity
+│   ├── knowledge/               # static docs: SOPs, MSDS, chemical_compatibility.csv, incident YAML
+│   ├── simulation/              # TEP integration (tep/ process model + controller + faults), scenario_definitions/
+│   ├── database/                 # audit.py, approvals.py, vector_store.py, chemical_compatibility.py (DuckDB, exact-match only — see note below)
+│   ├── utils/                     # config_loader, llm_router, monitoring
+│   ├── evaluation/                 # groundedness/precision/latency/judge scripts — see backend/evaluation/README.md for latest measured numbers
 │   └── config/                      # YAML — model names, thresholds, file paths
+├── docs/                        # demo_runbook.md, manual_testing_guide.md, project_journey.md
 ├── logs/                        # audit.log (hash-chained, append-only), monitoring.log
-├── tests/                       # pytest, mirrors backend/ structure 1:1
-├── data/                        # generated simulation output, seed knowledge base
+├── tests/                       # pytest, mirrors backend/ structure 1:1 (except tests/fakes.py — see §16)
+├── data/                        # generated simulation output, seed knowledge base, evaluation reports
 ├── requirements.txt
 └── README.md
 ```
 
 When creating a new module, put it in the folder matching its layer above — don't create ad hoc top-level files.
+
+**Note on DuckDB's actual scope:** despite §3/§8 describing DuckDB as also handling trend/analytics queries, the only DuckDB usage in the codebase today is `backend/database/chemical_compatibility.py`'s exact-match lookup (§7.8). No trend/analytics DuckDB layer over the SQLite data has been built yet — don't assume one exists when working in that area.
 
 ---
 
@@ -88,11 +91,15 @@ When creating a new module, put it in the folder matching its layer above — do
 | Analytics/aggregation | DuckDB                                                                                                                                       | Raw pandas loops for windowed aggregation — DuckDB is meaningfully faster and simpler here                                                                                                                                                                                                                                                                              |
 | Embeddings            | Sentence-Transformers (bge-small/base)                                                                                                       | OpenAI/paid embedding APIs                                                                                                                                                                                                                                                                                                                                              |
 | Simulation            | pyTEP (Tennessee Eastman Process)                                                                                                            | Hand-derived custom ODEs — TEP is the credibility anchor, don't quietly drop it for something "easier"                                                                                                                                                                                                                                                                  |
-| LLM reasoning         | Two-tier fallback chain, in order: Google Gemini API (free tier, gemini-2.5-flash) → Groq (free tier) | Any single-provider dependency, no local/offline model tier — build the fallback logic as a shared utility (`utils/llm_router.py`) used by every agent, don't hardcode one provider per agent |
+| LLM reasoning         | Two-tier fallback chain, in order: Google Gemini API (free tier, `gemini-flash-latest`) → Groq (free tier, `llama-3.3-70b-versatile`) | Any single-provider dependency, no local/offline model tier — build the fallback logic as a shared utility (`utils/llm_router.py`) used by every agent, don't hardcode one provider per agent |
 
 **LLM router requirements:** implement retry-with-fallback (timeout or rate-limit on Gemini → try Groq), log which tier actually served each request to the audit trail, and expose the currently-active tier to the frontend for the "active tier" dashboard indicator. If both tiers fail (e.g. no internet), the system must show a clear "reasoning service unavailable" state rather than hanging or silently retrying forever — fail visibly, not silently.
 
 **Provider history (2026-07-23):** the original primary tier was Hugging Face's free Serverless Inference API — since retired entirely (DNS-dead). Its replacement ("Inference Providers") is metered pay-as-you-go with only $0.10/month free credit, exhausted almost immediately at real volume — a genuine external change to this section's zero-paid-resources constraint, not fixable in code. Cerebras was evaluated and rejected next: despite claims of a card-free tier, a real account confirmed a payment method is required before any API access works at all. Gemini was verified live (real success, no billing setup) as the replacement primary tier. See `backend/utils/llm_router.py`'s module docstring for the full account.
+
+**Model name (updated 2026-07-24):** pinned Gemini version names are account/project-dependent — `gemini-2.5-flash` 404'd as "no longer available to new users" on a second real account, and `gemini-2.0-flash`/`-lite` 429'd on the same account. The `-latest` alias (currently `gemini-flash-latest`) is what's configured, since it worked live on both accounts. Re-verify with a live call before assuming any specific pinned version name works.
+
+**Gemini quota is tight — plan test/demo runs around it.** Verified live via a real 429 response body (not vendor docs, which claimed a 20–500/day range): the free tier caps at **20 requests/day, per project+model**. At ~3–4 Gemini calls per assessment cycle, that's roughly **5 full assessments before Gemini falls through to Groq for the rest of the day**. This is expected two-tier behavior, not a bug — but don't burn the quota running repeated manual/eval passes against Gemini specifically without accounting for it; see `backend/config/llm.yaml`'s header comment for the full account.
 
 ---
 
@@ -270,6 +277,7 @@ This section is the accumulated result of an adversarial review of the architect
 | Retrieval returns a superficially similar but causally wrong precedent | Filter by metadata (zone, equipment type, scenario category) before vector search, not just raw numeric similarity                                |
 | Knowledge base is too small/repetitive, inflating precision metrics    | Author scenarios varying in cause, not just severity; track distinct scenario types represented, not just window count                            |
 | Evaluation data leakage (seed and eval scenarios overlap)              | Split by scenario run ID, never by window — seed from one set of runs, evaluate only on held-out runs never ingested                              |
+| **Known open gap:** §9.2's "novel condition, low confidence" trigger essentially never fires — measured 100% false-positive rate on negative-control (no-fault) windows | Root-caused to embedding-similarity compression (`bge-small-en-v1.5` cosine scores compress into a ~1%-wide band near 1.0 regardless of match correctness — statistically indistinguishable). A supplementary numeric feature-vector similarity channel was built and gives real wrong-vs-correct discrimination, but does NOT close the gap (baseline windows still score as similar as genuine matches, for a different structural reason — near-zero deviation vectors always look close to each other). A relative/comparative novelty signal was also tried and discarded as a genuine negative result. Full measured numbers, root causes, and the next concrete unimplemented fix (gate on live window's own deviation magnitude before comparing to the KB at all): `backend/evaluation/README.md`. Don't re-attempt a plain threshold tweak on either similarity channel without reading that writeup first — it documents which approaches were already tried and why they failed. |
 
 ### LLM Reasoning Layer
 
